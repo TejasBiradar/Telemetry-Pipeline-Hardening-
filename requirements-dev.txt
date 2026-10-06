@@ -1,0 +1,7 @@
+-r requirements.txt
+-e .                  # install the teleguard and datagen packages from this checkout
+
+pytest>=7.4           # test runner (tested 7.4.3)
+pytest-cov>=4.1       # coverage; pyproject.toml runs pytest with --cov (tested 4.1.0)
+mypy>=1.7             # type checking, strict mode (tested 1.7.1)
+ruff>=0.11            # linting (tested 0.11.12)

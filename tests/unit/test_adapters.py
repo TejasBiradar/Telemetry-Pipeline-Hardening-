@@ -163,6 +163,20 @@ def test_sql_stages_and_lineage(sql: AnalysisResult) -> None:
     assert affected == {"avg_usd"}
 
 
+def test_not_null_test_is_recognised_in_both_sqlglot_shapes() -> None:
+    from sqlglot import exp
+
+    from teleguard.adapters.sql import not_null_column
+
+    column = exp.column("user_id")
+    old_shape = exp.Not(this=exp.Is(this=column.copy(), expression=exp.Null()))
+    new_shape = exp.Is(this=column.copy(), expression=exp.Null(), negate=True)
+    plain_is_null = exp.Is(this=column.copy(), expression=exp.Null())
+    assert not_null_column(old_shape) == "user_id"
+    assert not_null_column(new_shape) == "user_id"
+    assert not_null_column(plain_is_null) is None
+
+
 def test_sql_group_by_does_not_claim_null_dropping(sql: AnalysisResult) -> None:
     assert FindingKind.GROUP_KEY_DROPS_NULLS not in {f.kind for f in sql.findings}
 

@@ -1,0 +1,5 @@
+# Runtime dependencies. Tested on Python 3.10 with the versions noted.
+pandas>=2.2,<3        # runs and inspects the pipelines under test (tested 2.3.3)
+pydantic>=2.6,<3      # shared data contracts: Alert, CheckResult, code-graph Node/Edge (tested 2.13.4)
+networkx>=3.2,<4      # lineage queries over the code graph (tested 3.4.2)
+sqlglot>=30,<31       # parses SQL pipelines for the SQL adapter; needs the exp.Expr base class (tested 30.10.0)
