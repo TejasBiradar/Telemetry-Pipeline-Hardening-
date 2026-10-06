@@ -1,0 +1,14 @@
+{
+  "rows": 17,
+  "columns": [
+    "date",
+    "platform",
+    "country",
+    "events",
+    "active_users",
+    "error_rate",
+    "timeout_rate",
+    "avg_duration_s",
+    "p95_duration_s"
+  ]
+}

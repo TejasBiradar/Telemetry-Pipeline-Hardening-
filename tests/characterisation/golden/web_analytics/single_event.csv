@@ -1,0 +1,2 @@
+date,platform,country,events,active_users,error_rate,timeout_rate,avg_duration_s,p95_duration_s
+2026-09-21,web,IN,1,1,0.0,0.0,2.877,2.877

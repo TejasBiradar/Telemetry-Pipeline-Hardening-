@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(pipelines/*/legacy/**)",
+      "Write(pipelines/*/legacy/**)",
+      "Read(pipelines/*/answer_key/**)",
+      "Edit(pipelines/*/answer_key/**)",
+      "Write(pipelines/*/answer_key/**)",
+      "Read(./.env)",
+      "Edit(./.env)",
+      "Write(./.env)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Read|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect_paths.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,167 @@
+[
+  {
+    "id": "runtime_columns:-:run.py:38",
+    "kind": "runtime_columns",
+    "field": null,
+    "message": "a DataFrame is built from records: its column names come from the data, not the code; confirm them with a runtime run",
+    "evidence": {
+      "file": "run.py",
+      "line": 38,
+      "snippet": "df = pd.DataFrame(events)"
+    }
+  },
+  {
+    "id": "timestamp_unit:event_ts:run.py:39",
+    "kind": "timestamp_unit",
+    "field": "event_ts",
+    "message": "'event_ts' is parsed as epoch time in 'ms'",
+    "evidence": {
+      "file": "run.py",
+      "line": 39,
+      "snippet": "df[\"event_ts\"] = pd.to_datetime(df[\"event_ts\"], unit=\"ms\")"
+    }
+  },
+  {
+    "id": "dedup_key:event_id:run.py:47",
+    "kind": "dedup_key",
+    "field": "event_id",
+    "message": "rows with the same 'event_id' are treated as duplicates; later copies are dropped",
+    "evidence": {
+      "file": "run.py",
+      "line": 47,
+      "snippet": "df = df.drop_duplicates(subset=[\"event_id\"], keep=\"first\")"
+    }
+  },
+  {
+    "id": "required_field:user_id:run.py:50",
+    "kind": "required_field",
+    "field": "user_id",
+    "message": "rows with missing 'user_id' are removed: 'user_id' is treated as required",
+    "evidence": {
+      "file": "run.py",
+      "line": 50,
+      "snippet": "df = df[df[\"user_id\"].notna()].copy()"
+    }
+  },
+  {
+    "id": "unit_conversion:duration_ms:run.py:53",
+    "kind": "unit_conversion",
+    "field": "duration_ms",
+    "message": "'duration_s' = df['duration_ms'] / 1000.0: assumes 'duration_ms' is in the unit that this factor (1000.0) converts from",
+    "evidence": {
+      "file": "run.py",
+      "line": 53,
+      "snippet": "df[\"duration_s\"] = df[\"duration_ms\"] / 1000.0"
+    }
+  },
+  {
+    "id": "row_filter:duration_s:run.py:56",
+    "kind": "row_filter",
+    "field": "duration_s",
+    "message": "'df' keeps only rows where df['duration_s'] < 300; other rows are dropped silently",
+    "evidence": {
+      "file": "run.py",
+      "line": 56,
+      "snippet": "df = df[df[\"duration_s\"] < 300].copy()"
+    }
+  },
+  {
+    "id": "keyword_match:error_message:run.py:60",
+    "kind": "keyword_match",
+    "field": "error_message",
+    "message": "'error_message' is classified by matching the text 'timeout': wording or language changes break it",
+    "evidence": {
+      "file": "run.py",
+      "line": 60,
+      "snippet": "df[\"is_timeout\"] = df[\"error_message\"].str.contains(\"timeout\", case=False, na=False)"
+    }
+  },
+  {
+    "id": "string_format:client_version:run.py:63",
+    "kind": "string_format",
+    "field": "client_version",
+    "message": "'client_version' is assumed to be text split by '.'",
+    "evidence": {
+      "file": "run.py",
+      "line": 63,
+      "snippet": "df[\"major_version\"] = df[\"client_version\"].str.split(\".\").str[0]"
+    }
+  },
+  {
+    "id": "default_fill:session_id:run.py:79",
+    "kind": "default_fill",
+    "field": "session_id",
+    "message": "missing values derived from 'session_id' are silently replaced with 'Other'",
+    "evidence": {
+      "file": "run.py",
+      "line": 79,
+      "snippet": "df[\"country\"] = df[\"session_id\"].map(country_map).fillna(\"Other\")"
+    }
+  },
+  {
+    "id": "unmapped_to_null:session_id:run.py:79",
+    "kind": "unmapped_to_null",
+    "field": "session_id",
+    "message": "'session_id' is mapped with a fixed table of 5 values (session_001, session_002, session_003, session_004, session_005); any other value becomes missing",
+    "evidence": {
+      "file": "run.py",
+      "line": 79,
+      "snippet": "df[\"country\"] = df[\"session_id\"].map(country_map).fillna(\"Other\")"
+    }
+  },
+  {
+    "id": "row_filter:action:run.py:90",
+    "kind": "row_filter",
+    "field": "action",
+    "message": "'page_views' keeps only rows where df['action'] == 'page_view'; other rows are dropped silently",
+    "evidence": {
+      "file": "run.py",
+      "line": 90,
+      "snippet": "page_views = df[df[\"action\"] == \"page_view\"].copy()"
+    }
+  },
+  {
+    "id": "group_key_drops_nulls:date:run.py:92",
+    "kind": "group_key_drops_nulls",
+    "field": "date",
+    "message": "grouped by 'date' with pandas' default dropna=True: rows with missing 'date' vanish from the result",
+    "evidence": {
+      "file": "run.py",
+      "line": 92,
+      "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+    }
+  },
+  {
+    "id": "group_key_drops_nulls:platform:run.py:92",
+    "kind": "group_key_drops_nulls",
+    "field": "platform",
+    "message": "grouped by 'platform' with pandas' default dropna=True: rows with missing 'platform' vanish from the result",
+    "evidence": {
+      "file": "run.py",
+      "line": 92,
+      "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+    }
+  },
+  {
+    "id": "group_key_drops_nulls:country:run.py:92",
+    "kind": "group_key_drops_nulls",
+    "field": "country",
+    "message": "grouped by 'country' with pandas' default dropna=True: rows with missing 'country' vanish from the result",
+    "evidence": {
+      "file": "run.py",
+      "line": 92,
+      "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+    }
+  },
+  {
+    "id": "unused_field:major_version:run.py:63",
+    "kind": "unused_field",
+    "field": "major_version",
+    "message": "'major_version' is created but never used later and never reaches an output",
+    "evidence": {
+      "file": "run.py",
+      "line": 63,
+      "snippet": "df[\"major_version\"] = df[\"client_version\"].str.split(\".\").str[0]"
+    }
+  }
+]

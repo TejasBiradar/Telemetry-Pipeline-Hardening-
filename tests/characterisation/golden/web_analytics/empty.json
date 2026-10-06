@@ -1,0 +1,4 @@
+{
+  "raises": "KeyError",
+  "message": "'event_ts'"
+}

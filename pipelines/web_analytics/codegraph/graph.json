@@ -1,0 +1,937 @@
+{
+  "nodes": [
+    {
+      "id": "mod:run",
+      "type": "module",
+      "label": "run",
+      "attrs": {
+        "file": "run.py"
+      },
+      "origin": "static"
+    },
+    {
+      "id": "fn:run.ingest",
+      "type": "function",
+      "label": "run.ingest",
+      "attrs": {
+        "file": "run.py",
+        "line": 8
+      },
+      "origin": "static"
+    },
+    {
+      "id": "fn:run.clean",
+      "type": "function",
+      "label": "run.clean",
+      "attrs": {
+        "file": "run.py",
+        "line": 44
+      },
+      "origin": "static"
+    },
+    {
+      "id": "fn:run.enrich",
+      "type": "function",
+      "label": "run.enrich",
+      "attrs": {
+        "file": "run.py",
+        "line": 68
+      },
+      "origin": "static"
+    },
+    {
+      "id": "fn:run.aggregate",
+      "type": "function",
+      "label": "run.aggregate",
+      "attrs": {
+        "file": "run.py",
+        "line": 87
+      },
+      "origin": "static"
+    },
+    {
+      "id": "fn:run.run",
+      "type": "function",
+      "label": "run.run",
+      "attrs": {
+        "file": "run.py",
+        "line": 104
+      },
+      "origin": "static"
+    },
+    {
+      "id": "field:event_ts",
+      "type": "field",
+      "label": "event_ts",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:event_id",
+      "type": "field",
+      "label": "event_id",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:user_id",
+      "type": "field",
+      "label": "user_id",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:duration_s",
+      "type": "field",
+      "label": "duration_s",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:duration_ms",
+      "type": "field",
+      "label": "duration_ms",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:is_error",
+      "type": "field",
+      "label": "is_error",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:error_message",
+      "type": "field",
+      "label": "error_message",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:is_timeout",
+      "type": "field",
+      "label": "is_timeout",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:major_version",
+      "type": "field",
+      "label": "major_version",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:client_version",
+      "type": "field",
+      "label": "client_version",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:country",
+      "type": "field",
+      "label": "country",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:session_id",
+      "type": "field",
+      "label": "session_id",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:date",
+      "type": "field",
+      "label": "date",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:action",
+      "type": "field",
+      "label": "action",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "out:events",
+      "type": "output",
+      "label": "events",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "out:active_users",
+      "type": "output",
+      "label": "active_users",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "out:error_rate",
+      "type": "output",
+      "label": "error_rate",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "out:timeout_rate",
+      "type": "output",
+      "label": "timeout_rate",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "out:avg_duration_s",
+      "type": "output",
+      "label": "avg_duration_s",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "out:p95_duration_s",
+      "type": "output",
+      "label": "p95_duration_s",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "out:date",
+      "type": "output",
+      "label": "date",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "field:platform",
+      "type": "field",
+      "label": "platform",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "out:platform",
+      "type": "output",
+      "label": "platform",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "out:country",
+      "type": "output",
+      "label": "country",
+      "attrs": {},
+      "origin": "both"
+    },
+    {
+      "id": "stage:1:ingest",
+      "type": "stage",
+      "label": "ingest",
+      "attrs": {
+        "order": 1,
+        "function": "fn:run.ingest",
+        "called_at": "run.py:106"
+      },
+      "origin": "static"
+    },
+    {
+      "id": "stage:2:clean",
+      "type": "stage",
+      "label": "clean",
+      "attrs": {
+        "order": 2,
+        "function": "fn:run.clean",
+        "called_at": "run.py:107"
+      },
+      "origin": "static"
+    },
+    {
+      "id": "stage:3:enrich",
+      "type": "stage",
+      "label": "enrich",
+      "attrs": {
+        "order": 3,
+        "function": "fn:run.enrich",
+        "called_at": "run.py:108"
+      },
+      "origin": "static"
+    },
+    {
+      "id": "stage:4:aggregate",
+      "type": "stage",
+      "label": "aggregate",
+      "attrs": {
+        "order": 4,
+        "function": "fn:run.aggregate",
+        "called_at": "run.py:109"
+      },
+      "origin": "static"
+    },
+    {
+      "id": "field:batch_id",
+      "type": "field",
+      "label": "batch_id",
+      "attrs": {},
+      "origin": "runtime"
+    },
+    {
+      "id": "field:page",
+      "type": "field",
+      "label": "page",
+      "attrs": {},
+      "origin": "runtime"
+    }
+  ],
+  "edges": [
+    {
+      "source": "fn:run.ingest",
+      "target": "field:event_ts",
+      "type": "writes",
+      "evidence": {
+        "file": "run.py",
+        "line": 39,
+        "snippet": "df[\"event_ts\"] = pd.to_datetime(df[\"event_ts\"], unit=\"ms\")"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:event_ts",
+      "target": "field:event_ts",
+      "type": "derives",
+      "evidence": {
+        "file": "run.py",
+        "line": 39,
+        "snippet": "df[\"event_ts\"] = pd.to_datetime(df[\"event_ts\"], unit=\"ms\")"
+      },
+      "attrs": {
+        "formula": "pd.to_datetime(df['event_ts'], unit='ms')"
+      },
+      "origin": "both"
+    },
+    {
+      "source": "field:event_ts",
+      "target": "fn:run.ingest",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 39,
+        "snippet": "df[\"event_ts\"] = pd.to_datetime(df[\"event_ts\"], unit=\"ms\")"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:event_id",
+      "target": "fn:run.clean",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 47,
+        "snippet": "df = df.drop_duplicates(subset=[\"event_id\"], keep=\"first\")"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:user_id",
+      "target": "fn:run.clean",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 50,
+        "snippet": "df = df[df[\"user_id\"].notna()].copy()"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "fn:run.clean",
+      "target": "field:duration_s",
+      "type": "writes",
+      "evidence": {
+        "file": "run.py",
+        "line": 53,
+        "snippet": "df[\"duration_s\"] = df[\"duration_ms\"] / 1000.0"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:duration_ms",
+      "target": "field:duration_s",
+      "type": "derives",
+      "evidence": {
+        "file": "run.py",
+        "line": 53,
+        "snippet": "df[\"duration_s\"] = df[\"duration_ms\"] / 1000.0"
+      },
+      "attrs": {
+        "formula": "df['duration_ms'] / 1000.0"
+      },
+      "origin": "both"
+    },
+    {
+      "source": "field:duration_ms",
+      "target": "fn:run.clean",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 53,
+        "snippet": "df[\"duration_s\"] = df[\"duration_ms\"] / 1000.0"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:duration_s",
+      "target": "fn:run.clean",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 56,
+        "snippet": "df = df[df[\"duration_s\"] < 300].copy()"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "fn:run.clean",
+      "target": "field:is_error",
+      "type": "writes",
+      "evidence": {
+        "file": "run.py",
+        "line": 59,
+        "snippet": "df[\"is_error\"] = df[\"error_message\"].notna()"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:error_message",
+      "target": "field:is_error",
+      "type": "derives",
+      "evidence": {
+        "file": "run.py",
+        "line": 59,
+        "snippet": "df[\"is_error\"] = df[\"error_message\"].notna()"
+      },
+      "attrs": {
+        "formula": "df['error_message'].notna()"
+      },
+      "origin": "both"
+    },
+    {
+      "source": "field:error_message",
+      "target": "fn:run.clean",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 59,
+        "snippet": "df[\"is_error\"] = df[\"error_message\"].notna()"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "fn:run.clean",
+      "target": "field:is_timeout",
+      "type": "writes",
+      "evidence": {
+        "file": "run.py",
+        "line": 60,
+        "snippet": "df[\"is_timeout\"] = df[\"error_message\"].str.contains(\"timeout\", case=False, na=False)"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:error_message",
+      "target": "field:is_timeout",
+      "type": "derives",
+      "evidence": {
+        "file": "run.py",
+        "line": 60,
+        "snippet": "df[\"is_timeout\"] = df[\"error_message\"].str.contains(\"timeout\", case=False, na=False)"
+      },
+      "attrs": {
+        "formula": "df['error_message'].str.contains('timeout', case=False, na=False)"
+      },
+      "origin": "both"
+    },
+    {
+      "source": "field:error_message",
+      "target": "fn:run.clean",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 60,
+        "snippet": "df[\"is_timeout\"] = df[\"error_message\"].str.contains(\"timeout\", case=False, na=False)"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "fn:run.clean",
+      "target": "field:major_version",
+      "type": "writes",
+      "evidence": {
+        "file": "run.py",
+        "line": 63,
+        "snippet": "df[\"major_version\"] = df[\"client_version\"].str.split(\".\").str[0]"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:client_version",
+      "target": "field:major_version",
+      "type": "derives",
+      "evidence": {
+        "file": "run.py",
+        "line": 63,
+        "snippet": "df[\"major_version\"] = df[\"client_version\"].str.split(\".\").str[0]"
+      },
+      "attrs": {
+        "formula": "df['client_version'].str.split('.').str[0]"
+      },
+      "origin": "both"
+    },
+    {
+      "source": "field:client_version",
+      "target": "fn:run.clean",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 63,
+        "snippet": "df[\"major_version\"] = df[\"client_version\"].str.split(\".\").str[0]"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "fn:run.enrich",
+      "target": "field:country",
+      "type": "writes",
+      "evidence": {
+        "file": "run.py",
+        "line": 79,
+        "snippet": "df[\"country\"] = df[\"session_id\"].map(country_map).fillna(\"Other\")"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:session_id",
+      "target": "field:country",
+      "type": "derives",
+      "evidence": {
+        "file": "run.py",
+        "line": 79,
+        "snippet": "df[\"country\"] = df[\"session_id\"].map(country_map).fillna(\"Other\")"
+      },
+      "attrs": {
+        "formula": "df['session_id'].map({'session_001': 'US', 'session_002': 'GB', 'session_003': 'DE', 'session_004': 'IN', 'session_005': 'SG'}).fillna('Other')"
+      },
+      "origin": "both"
+    },
+    {
+      "source": "field:session_id",
+      "target": "fn:run.enrich",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 79,
+        "snippet": "df[\"country\"] = df[\"session_id\"].map(country_map).fillna(\"Other\")"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "fn:run.enrich",
+      "target": "field:date",
+      "type": "writes",
+      "evidence": {
+        "file": "run.py",
+        "line": 82,
+        "snippet": "df[\"date\"] = df[\"event_ts\"].dt.date"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:event_ts",
+      "target": "field:date",
+      "type": "derives",
+      "evidence": {
+        "file": "run.py",
+        "line": 82,
+        "snippet": "df[\"date\"] = df[\"event_ts\"].dt.date"
+      },
+      "attrs": {
+        "formula": "df['event_ts'].dt.date"
+      },
+      "origin": "both"
+    },
+    {
+      "source": "field:event_ts",
+      "target": "fn:run.enrich",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 82,
+        "snippet": "df[\"date\"] = df[\"event_ts\"].dt.date"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:action",
+      "target": "fn:run.aggregate",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 90,
+        "snippet": "page_views = df[df[\"action\"] == \"page_view\"].copy()"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:event_id",
+      "target": "fn:run.aggregate",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:event_id",
+      "target": "out:events",
+      "type": "produces",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "how": "'count'"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:user_id",
+      "target": "fn:run.aggregate",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:user_id",
+      "target": "out:active_users",
+      "type": "produces",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "how": "'nunique'"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:is_error",
+      "target": "fn:run.aggregate",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:is_error",
+      "target": "out:error_rate",
+      "type": "produces",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "how": "'mean'"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:is_timeout",
+      "target": "fn:run.aggregate",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:is_timeout",
+      "target": "out:timeout_rate",
+      "type": "produces",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "how": "'mean'"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:duration_s",
+      "target": "fn:run.aggregate",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "field:duration_s",
+      "target": "out:avg_duration_s",
+      "type": "produces",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "how": "'mean'"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:duration_s",
+      "target": "out:p95_duration_s",
+      "type": "produces",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "how": "lambda x: x.quantile(0.95)"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:date",
+      "target": "fn:run.aggregate",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "role": "group_key"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:date",
+      "target": "out:date",
+      "type": "produces",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "role": "group_key"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:platform",
+      "target": "fn:run.aggregate",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "role": "group_key"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:platform",
+      "target": "out:platform",
+      "type": "produces",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "role": "group_key"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:country",
+      "target": "fn:run.aggregate",
+      "type": "reads",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "role": "group_key"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "field:country",
+      "target": "out:country",
+      "type": "produces",
+      "evidence": {
+        "file": "run.py",
+        "line": 92,
+        "snippet": "metrics = page_views.groupby([\"date\", \"platform\", \"country\"]).agg("
+      },
+      "attrs": {
+        "role": "group_key"
+      },
+      "origin": "static"
+    },
+    {
+      "source": "fn:run.run",
+      "target": "fn:run.ingest",
+      "type": "calls",
+      "evidence": {
+        "file": "run.py",
+        "line": 106,
+        "snippet": "df = ingest(data_dir)"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "fn:run.run",
+      "target": "fn:run.clean",
+      "type": "calls",
+      "evidence": {
+        "file": "run.py",
+        "line": 107,
+        "snippet": "df = clean(df)"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "fn:run.run",
+      "target": "fn:run.enrich",
+      "type": "calls",
+      "evidence": {
+        "file": "run.py",
+        "line": 108,
+        "snippet": "df = enrich(df)"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "fn:run.run",
+      "target": "fn:run.aggregate",
+      "type": "calls",
+      "evidence": {
+        "file": "run.py",
+        "line": 109,
+        "snippet": "df = aggregate(df)"
+      },
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "stage:1:ingest",
+      "target": "fn:run.ingest",
+      "type": "calls",
+      "evidence": null,
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "stage:2:clean",
+      "target": "fn:run.clean",
+      "type": "calls",
+      "evidence": null,
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "stage:1:ingest",
+      "target": "stage:2:clean",
+      "type": "next_stage",
+      "evidence": null,
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "stage:3:enrich",
+      "target": "fn:run.enrich",
+      "type": "calls",
+      "evidence": null,
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "stage:2:clean",
+      "target": "stage:3:enrich",
+      "type": "next_stage",
+      "evidence": null,
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "stage:4:aggregate",
+      "target": "fn:run.aggregate",
+      "type": "calls",
+      "evidence": null,
+      "attrs": {},
+      "origin": "static"
+    },
+    {
+      "source": "stage:3:enrich",
+      "target": "stage:4:aggregate",
+      "type": "next_stage",
+      "evidence": null,
+      "attrs": {},
+      "origin": "static"
+    }
+  ]
+}
