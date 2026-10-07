@@ -16,6 +16,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from teleguard.adapters.base import AnalysisResult
+from teleguard.codegraph.model import CodeGraph, Edge, EdgeType, Node, NodeType
 from teleguard.contracts.model import Contract, load_contract
 from teleguard.drift.baseline import BaselineStore
 from teleguard.evaluate.baselines import build_baseline_store
@@ -71,8 +73,26 @@ def build_state(pipeline_dir: Path = PIPELINE_DIR) -> AppState:
     registry.add(web_analytics)
     registry.select("web_analytics")
 
-    # Add demo pipelines for testing (without full setup)
-    # These show up in the selector but load web_analytics data under the hood
+    # Add demo pipelines for testing (with DIFFERENT simplified graphs)
+    # Each has unique stage structure so users can see differences
+
+    # user_behavior: simpler pipeline with fewer stages
+    user_behavior_graph = CodeGraph()
+    user_behavior_graph.add_node(Node(id="mod:run", type=NodeType.MODULE, label="run"))
+    user_behavior_graph.add_node(Node(id="fn:run.session_aggregate", type=NodeType.FUNCTION, label="run.session_aggregate"))
+    user_behavior_graph.add_node(Node(id="field:user_id", type=NodeType.FIELD, label="user_id"))
+    user_behavior_graph.add_node(Node(id="field:session_count", type=NodeType.FIELD, label="session_count"))
+    user_behavior_graph.add_node(Node(id="out:user_sessions", type=NodeType.OUTPUT, label="user_sessions"))
+    user_behavior_graph.add_edge(Edge(source="field:user_id", target="field:session_count", type=EdgeType.DERIVES))
+    user_behavior_graph.add_edge(Edge(source="field:session_count", target="out:user_sessions", type=EdgeType.PRODUCES))
+
+    user_behavior_analysis = AnalysisResult(
+        graph=user_behavior_graph,
+        findings=[],
+        stages=["aggregate"],
+        checkpoints=["after_aggregate"],
+    )
+
     user_behavior = PipelineMetadata(
         id="user_behavior",
         name="user_behavior_analytics",
@@ -80,15 +100,35 @@ def build_state(pipeline_dir: Path = PIPELINE_DIR) -> AppState:
         source_root=pipeline_dir,
         adapter_name="python_pandas",
         entry_point="run.run",
-        contract=web_analytics.contract,  # Reuse contract for demo
-        analysis=web_analytics.analysis,  # Reuse analysis for demo
-        findings_json=web_analytics.findings_json,
-        decisions=web_analytics.decisions,
+        contract=web_analytics.contract,
+        analysis=user_behavior_analysis,  # Different graph!
+        findings_json=[],
+        decisions={},
         status="ready",
     )
     user_behavior._legacy_module = web_analytics._legacy_module  # type: ignore
     user_behavior._baselines = web_analytics._baselines  # type: ignore
     registry.add(user_behavior)
+
+    # payment_processing: different pipeline with payment-related stages
+    payment_graph = CodeGraph()
+    payment_graph.add_node(Node(id="mod:run", type=NodeType.MODULE, label="run"))
+    payment_graph.add_node(Node(id="fn:run.validate", type=NodeType.FUNCTION, label="run.validate"))
+    payment_graph.add_node(Node(id="fn:run.reconcile", type=NodeType.FUNCTION, label="run.reconcile"))
+    payment_graph.add_node(Node(id="field:transaction_id", type=NodeType.FIELD, label="transaction_id"))
+    payment_graph.add_node(Node(id="field:amount", type=NodeType.FIELD, label="amount"))
+    payment_graph.add_node(Node(id="field:status", type=NodeType.FIELD, label="status"))
+    payment_graph.add_node(Node(id="out:settled_payments", type=NodeType.OUTPUT, label="settled_payments"))
+    payment_graph.add_edge(Edge(source="field:transaction_id", target="field:amount", type=EdgeType.READS))
+    payment_graph.add_edge(Edge(source="field:amount", target="field:status", type=EdgeType.DERIVES))
+    payment_graph.add_edge(Edge(source="field:status", target="out:settled_payments", type=EdgeType.PRODUCES))
+
+    payment_analysis = AnalysisResult(
+        graph=payment_graph,
+        findings=[],
+        stages=["validate", "reconcile"],
+        checkpoints=["after_validate", "after_reconcile"],
+    )
 
     payment_processing = PipelineMetadata(
         id="payment_processing",
@@ -97,10 +137,10 @@ def build_state(pipeline_dir: Path = PIPELINE_DIR) -> AppState:
         source_root=pipeline_dir,
         adapter_name="python_pandas",
         entry_point="run.run",
-        contract=web_analytics.contract,  # Reuse contract for demo
-        analysis=web_analytics.analysis,  # Reuse analysis for demo
-        findings_json=web_analytics.findings_json,
-        decisions=web_analytics.decisions,
+        contract=web_analytics.contract,
+        analysis=payment_analysis,  # Different graph!
+        findings_json=[],
+        decisions={},
         status="ready",
     )
     payment_processing._legacy_module = web_analytics._legacy_module  # type: ignore
