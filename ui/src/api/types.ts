@@ -48,6 +48,17 @@ export interface AlertOut {
   root_field: string | null
   message: string
   affected_outputs: string[]
+  lineage: { node_id: string; node_type: string; label: string }[]
+  first_batch: number | null
+}
+
+export interface BatchSummary {
+  batch: number
+  passed: number
+  warned: number
+  failed: number
+  blocked: boolean
+  failing_checks: string[]
 }
 
 export interface ScenarioResult {
@@ -58,7 +69,9 @@ export interface ScenarioResult {
   crashed_at_batch: number | null
   true_positive_alerts: number
   false_positive_alerts: number
+  onset_batch: number
   alerts: AlertOut[]
+  batches: BatchSummary[]
 }
 
 export interface EvaluationSummary {

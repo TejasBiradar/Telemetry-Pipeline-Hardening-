@@ -166,7 +166,8 @@ Writes are **idempotent**: keyed by `(run_id, batch_id, checkpoint, check_name, 
 | Fault injector (8 scenarios), baseline builder, evaluation engine, CI eval gate | ✅ built + tested — measured: ours precision 1.00, recall 0.86, mean lag 0 batches vs. B0 (no checks) recall 0.00 and B1 (naive schema-only) recall 0.14 |
 | Lineage module (`teleguard/lineage/`), hook lines into the real pipeline (`HOOKS.md`) | ⏳ next (A) |
 | API (`api/`): code graph, guarantees, scenarios, evaluation — all endpoints live-tested | ✅ built + tested |
-| React UI, non-API deployment pieces | ⏳ next — UI not started |
+| React UI (`ui/`): overview, code graph, guarantees, fault injection with batch timeline, evaluation report | ✅ built, screenshot-verified against the live API; no automated UI tests yet |
+| Deployment pieces (Phase 14) | ⏳ next |
 | GUARANTEES.md human review (15 findings still pending) | ⏳ next (A) |
 
 ---

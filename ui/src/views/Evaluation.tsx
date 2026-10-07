@@ -1,6 +1,8 @@
-import { useEvaluation, useRefreshEvaluation } from "../api/hooks"
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { useEvaluation, useRefreshEvaluation, useScenarios } from "../api/hooks"
 import { ErrorCard } from "../components/QueryState"
 import { StatusPill } from "../components/StatusPill"
+import type { EvaluationSummary } from "../api/types"
 
 const SYSTEM_LABEL: Record<string, string> = {
   B0: "B0 — no checks",
@@ -8,9 +10,25 @@ const SYSTEM_LABEL: Record<string, string> = {
   ours: "Ours",
 }
 
+// A clean control has nothing to catch: staying silent is the right answer, an alert is a false positive.
+function DetectionCell({ detected, isControl }: { detected: boolean; isControl: boolean }) {
+  if (isControl) {
+    return detected
+      ? <StatusPill tone="critical" label="false alarm" />
+      : <StatusPill tone="success" label="no alert" />
+  }
+  return <StatusPill tone={detected ? "success" : "neutral"} label={detected ? "caught" : "missed"} />
+}
+
+function chartData(reports: EvaluationSummary[]) {
+  return reports.map((r) => ({ system: r.system, precision: r.precision, recall: r.recall }))
+}
+
 export function Evaluation() {
   const evaluation = useEvaluation()
   const refresh = useRefreshEvaluation()
+  const scenarios = useScenarios()
+  const controls = new Set((scenarios.data ?? []).filter((s) => s.fault_type === "clean").map((s) => s.name))
 
   const isComputing = evaluation.isLoading || refresh.isPending
 
@@ -46,6 +64,26 @@ export function Evaluation() {
 
       {reports && (
         <>
+          <div className="card">
+            <div className="card-title">Precision and recall by system</div>
+            <div role="img" aria-label="Precision and recall for each system, from 0 to 1" style={{ marginTop: 10 }}>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData(reports)} margin={{ top: 8, right: 8, bottom: 0, left: -20 }}>
+                  <CartesianGrid stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="system" tick={{ fill: "var(--text-muted)", fontSize: 12 }} tickLine={false} />
+                  <YAxis domain={[0, 1]} tick={{ fill: "var(--text-muted)", fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    cursor={{ fill: "var(--surface-hover)" }}
+                    contentStyle={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)", borderRadius: 8, fontSize: 12 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="precision" fill="var(--accent)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="recall" fill="var(--data)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
           <div className="table-wrap">
             <table>
               <thead>
@@ -90,10 +128,7 @@ export function Evaluation() {
                     <td className="mono">{name}</td>
                     {reports.map((r) => (
                       <td key={r.system}>
-                        <StatusPill
-                          tone={r.detection_matrix[name] ? "success" : "neutral"}
-                          label={r.detection_matrix[name] ? "caught" : "missed"}
-                        />
+                        <DetectionCell detected={r.detection_matrix[name]} isControl={controls.has(name)} />
                       </td>
                     ))}
                   </tr>

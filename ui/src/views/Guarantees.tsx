@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { useGuarantees } from "../api/hooks"
+import { useGuarantees, useSetGuaranteeDecision } from "../api/hooks"
 import { ErrorCard, LoadingCard } from "../components/QueryState"
 import { StatusPill } from "../components/StatusPill"
 import { toneForStatus } from "../components/statusTone"
@@ -9,6 +9,7 @@ const FILTERS: Array<GuaranteeStatus | "all"> = ["all", "pending", "confirmed", 
 
 export function Guarantees() {
   const guarantees = useGuarantees()
+  const setDecision = useSetGuaranteeDecision()
   const [filter, setFilter] = useState<GuaranteeStatus | "all">("all")
 
   const counts = useMemo(() => {
@@ -56,6 +57,7 @@ export function Guarantees() {
               <th>Field</th>
               <th>What the code implies</th>
               <th>Evidence</th>
+              <th style={{ textAlign: "center" }}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -67,6 +69,24 @@ export function Guarantees() {
                 <td style={{ maxWidth: 420 }}>{g.message}</td>
                 <td className="mono" style={{ color: "var(--text-muted)" }}>
                   {g.file}:{g.line}
+                </td>
+                <td style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                  <button
+                    onClick={() => setDecision.mutate({ id: g.id, status: "confirmed" })}
+                    disabled={setDecision.isPending || g.status === "confirmed"}
+                    style={{ fontSize: 12, padding: "4px 8px" }}
+                    className="btn"
+                  >
+                    {setDecision.isPending ? "…" : "Confirm"}
+                  </button>
+                  <button
+                    onClick={() => setDecision.mutate({ id: g.id, status: "rejected" })}
+                    disabled={setDecision.isPending || g.status === "rejected"}
+                    style={{ fontSize: 12, padding: "4px 8px" }}
+                    className="btn"
+                  >
+                    {setDecision.isPending ? "…" : "Reject"}
+                  </button>
                 </td>
               </tr>
             ))}

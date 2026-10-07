@@ -15,8 +15,10 @@ class ApiError extends Error {
   }
 }
 
+const API_BASE = "/api"
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init)
+  const response = await fetch(`${API_BASE}${path}`, init)
   if (!response.ok) {
     const body = await response.text()
     throw new ApiError(response.status, body || `${response.status} ${response.statusText}`)
@@ -28,6 +30,12 @@ export const api = {
   health: () => request<{ status: string }>("/health"),
   graph: () => request<CodeGraph>("/pipeline/graph"),
   guarantees: () => request<Guarantee[]>("/pipeline/guarantees"),
+  setGuaranteeDecision: (id: string, status: string) =>
+    request<Guarantee>(`/pipeline/guarantees/${encodeURIComponent(id)}/decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    }),
   scenarios: () => request<ScenarioInfo[]>("/scenarios"),
   runScenario: (name: string) =>
     request<ScenarioResult>(`/scenarios/${encodeURIComponent(name)}/run`, { method: "POST" }),

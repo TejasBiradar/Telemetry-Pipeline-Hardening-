@@ -1,13 +1,19 @@
-import { useState } from "react"
-import { useRunScenario, useScenarios } from "../api/hooks"
+import { useMemo, useState } from "react"
+import { useGraph, useRunScenario, useScenarios } from "../api/hooks"
 import { ErrorCard, LoadingCard } from "../components/QueryState"
+import { BatchTimeline } from "../components/BatchTimeline"
 import { StatusPill } from "../components/StatusPill"
-import type { ScenarioResult } from "../api/types"
+import { affectedOutputLabels, buildLineage } from "../lib/lineage"
+import type { Lineage } from "../lib/lineage"
+import type { AlertOut, ScenarioResult } from "../api/types"
 
 export function FaultInjection() {
   const scenarios = useScenarios()
+  const graph = useGraph()
+  const lineage = useMemo(() => (graph.data ? buildLineage(graph.data) : null), [graph.data])
   const runScenario = useRunScenario()
   const [results, setResults] = useState<Record<string, ScenarioResult>>({})
+  const [errors, setErrors] = useState<Record<string, unknown>>({})
   const [running, setRunning] = useState<string | null>(null)
 
   if (scenarios.isLoading) return <div className="page"><LoadingCard /></div>
@@ -15,9 +21,12 @@ export function FaultInjection() {
 
   async function run(name: string) {
     setRunning(name)
+    setErrors((prev) => ({ ...prev, [name]: null }))
     try {
       const result = await runScenario.mutateAsync(name)
       setResults((prev) => ({ ...prev, [name]: result }))
+    } catch (error) {
+      setErrors((prev) => ({ ...prev, [name]: error }))
     } finally {
       setRunning(null)
     }
@@ -32,7 +41,7 @@ export function FaultInjection() {
         result is reproducible, not theatre.
       </div>
 
-      <div className="grid grid-2">
+      <div className="grid grid-2" style={{ alignItems: "start" }}>
         {scenarios.data!.map((scenario) => {
           const result = results[scenario.name]
           const isRunning = running === scenario.name
@@ -58,6 +67,10 @@ export function FaultInjection() {
                 </div>
               )}
 
+              {!isRunning && errors[scenario.name] != null && (
+                <div style={{ marginTop: 16 }}><ErrorCard error={errors[scenario.name]} /></div>
+              )}
+
               {!isRunning && result && (
                 <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -72,6 +85,8 @@ export function FaultInjection() {
                       <span className="pill pill-warning">pipeline crashed at batch {result.crashed_at_batch}</span>
                     )}
                   </div>
+
+                  <BatchTimeline batches={result.batches} onsetBatch={result.onset_batch} />
 
                   {result.alerts.length > 0 && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -95,6 +110,7 @@ export function FaultInjection() {
                             />
                           </div>
                           <p style={{ fontSize: 12.5, marginTop: 6 }}>{alert.message}</p>
+                          <AlertContext alert={alert} outputs={impactedOutputs(alert, lineage)} />
                         </div>
                       ))}
                     </div>
@@ -108,6 +124,26 @@ export function FaultInjection() {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+function impactedOutputs(alert: AlertOut, lineage: Lineage | null): string[] {
+  if (alert.affected_outputs.length > 0) return alert.affected_outputs
+  if (!lineage || !alert.root_field) return []
+  return affectedOutputLabels(lineage, alert.root_field)
+}
+
+function AlertContext({ alert, outputs }: { alert: AlertOut; outputs: string[] }) {
+  return (
+    <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      {alert.first_batch !== null && <span className="pill pill-neutral">first raised: batch {alert.first_batch}</span>}
+      {alert.root_field && <span className="pill pill-accent mono">root: {alert.root_field}</span>}
+      {outputs.length > 0 && (
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          can reach <span className="mono">{outputs.join(", ")}</span>
+        </span>
+      )}
     </div>
   )
 }

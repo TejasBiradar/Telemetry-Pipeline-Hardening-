@@ -5,11 +5,12 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // API lives under /api so it can't shadow UI routes like /scenarios and /evaluation
     proxy: {
-      '/health': 'http://localhost:8000',
-      '/pipeline': 'http://localhost:8000',
-      '/scenarios': 'http://localhost:8000',
-      '/evaluation': 'http://localhost:8000',
+      '/api': {
+        target: 'http://localhost:8000',
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
     },
   },
 })

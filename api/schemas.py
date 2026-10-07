@@ -13,6 +13,12 @@ class ScenarioInfo(BaseModel):
     fault_type: str
 
 
+class LineageStepOut(BaseModel):
+    node_id: str
+    node_type: str
+    label: str
+
+
 class AlertOut(BaseModel):
     alert_id: str
     severity: str
@@ -20,6 +26,17 @@ class AlertOut(BaseModel):
     root_field: str | None
     message: str
     affected_outputs: list[str]
+    lineage: list[LineageStepOut]
+    first_batch: int | None
+
+
+class BatchSummaryOut(BaseModel):
+    batch: int
+    passed: int
+    warned: int
+    failed: int
+    blocked: bool
+    failing_checks: list[str]
 
 
 class ScenarioResultOut(BaseModel):
@@ -30,7 +47,9 @@ class ScenarioResultOut(BaseModel):
     crashed_at_batch: int | None
     true_positive_alerts: int
     false_positive_alerts: int
+    onset_batch: int
     alerts: list[AlertOut]
+    batches: list[BatchSummaryOut]
 
 
 class EvaluationSummaryOut(BaseModel):
@@ -49,3 +68,7 @@ class GuaranteeOut(BaseModel):
     file: str
     line: int
     status: str
+
+
+class GuaranteeDecisionIn(BaseModel):
+    status: str  # "confirmed", "rejected"

@@ -10,16 +10,21 @@ cached baseline store — that's the endpoint a live demo button should call.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.schemas import (
     AlertOut,
+    BatchSummaryOut,
     EvaluationSummaryOut,
+    GuaranteeDecisionIn,
     GuaranteeOut,
+    LineageStepOut,
     ScenarioInfo,
     ScenarioResultOut,
 )
@@ -27,6 +32,7 @@ from api.state import AppState, build_state
 from datagen.generate import GenConfig
 from teleguard.evaluate.comparison_systems import b0_no_checks, b1_naive_schema_only, ours
 from teleguard.evaluate.engine import EvaluationReport, evaluate, run_scenario, score_scenario
+from teleguard.models import CheckResult, Status
 
 N_BATCHES = 10
 EVENTS_PER_BATCH = 3000
@@ -81,6 +87,33 @@ def get_guarantees() -> list[GuaranteeOut]:
     return out
 
 
+@app.post("/pipeline/guarantees/{guarantee_id}/decision", response_model=GuaranteeOut)
+def set_guarantee_decision(guarantee_id: str, decision: GuaranteeDecisionIn) -> GuaranteeOut:
+    state = _state_or_503()
+    # Find the finding
+    finding = next((f for f in state.findings if f["id"] == guarantee_id), None)
+    if finding is None:
+        raise HTTPException(404, f"no such guarantee: {guarantee_id}")
+    # Validate status
+    if decision.status not in ("confirmed", "rejected"):
+        raise HTTPException(400, f"invalid status: {decision.status}")
+    # Save decision
+    state.decisions[guarantee_id] = {"status": decision.status}
+    _save_decisions(state)
+    # Return updated guarantee
+    return GuaranteeOut(
+        id=finding["id"], kind=finding["kind"], field=finding.get("field"),
+        message=finding["message"], file=finding["evidence"]["file"],
+        line=finding["evidence"]["line"], status=decision.status,
+    )
+
+
+def _save_decisions(state: AppState) -> None:
+    decisions_path = Path(__file__).resolve().parents[1] / "pipelines" / state.pipeline_name / "review" / "decisions.json"
+    decisions_path.parent.mkdir(parents=True, exist_ok=True)
+    decisions_path.write_text(json.dumps(state.decisions, indent=2))
+
+
 @app.get("/scenarios", response_model=list[ScenarioInfo])
 def list_scenarios() -> list[ScenarioInfo]:
     return [ScenarioInfo(name=s.name, fault_type=s.fault_type.value)
@@ -100,14 +133,32 @@ def run_one_scenario(name: str) -> ScenarioResultOut:
     score = score_scenario(run)
     alerts = [
         AlertOut(alert_id=a.alert_id, severity=a.severity, segment=a.segment,
-                root_field=a.root_field, message=a.message, affected_outputs=a.affected_outputs)
+                root_field=a.root_field, message=a.message, affected_outputs=a.affected_outputs,
+                lineage=[LineageStepOut(node_id=step.node_id, node_type=step.node_type,
+                                        label=step.label) for step in a.lineage],
+                first_batch=run.alert_first_batch.get(a.alert_id))
         for a in run.alerts.values()
     ]
+    batches = [_summarise_batch(i, results, i in run.blocked_batches)
+               for i, results in enumerate(run.results_by_batch, start=1)]
     return ScenarioResultOut(
         scenario=name, fault_type=score.fault_type.value, detected=score.detected,
         lag_batches=score.lag_batches, crashed_at_batch=score.crashed_at_batch,
         true_positive_alerts=score.true_positive_alerts,
-        false_positive_alerts=score.false_positive_alerts, alerts=alerts,
+        false_positive_alerts=score.false_positive_alerts,
+        onset_batch=run.injection.onset_batch, alerts=alerts, batches=batches,
+    )
+
+
+def _summarise_batch(batch: int, results: list[CheckResult], blocked: bool) -> BatchSummaryOut:
+    failing = [r for r in results if r.status == Status.FAIL]
+    return BatchSummaryOut(
+        batch=batch,
+        passed=sum(r.status == Status.PASS for r in results),
+        warned=sum(r.status == Status.WARN for r in results),
+        failed=len(failing),
+        blocked=blocked,
+        failing_checks=sorted({r.check for r in failing}),
     )
 
 

@@ -41,3 +41,11 @@ export function useRefreshEvaluation() {
     onSuccess: (data) => queryClient.setQueryData(["evaluation"], data),
   })
 }
+
+export function useSetGuaranteeDecision() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) => api.setGuaranteeDecision(id, status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guarantees"] }),
+  })
+}

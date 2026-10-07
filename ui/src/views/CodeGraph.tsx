@@ -4,16 +4,11 @@ import { useGraph, useGuarantees } from "../api/hooks"
 import { ErrorCard, LoadingCard } from "../components/QueryState"
 import { StatusPill } from "../components/StatusPill"
 import { toneForStatus } from "../components/statusTone"
+import { buildLineage, reachable } from "../lib/lineage"
 import type { GraphEdge, GraphNode } from "../api/types"
 
 const NODE_W = 150
 const NODE_H = 36
-// Impact analysis only means something over data flow: field -> field (derives) and
-// field -> output (produces) — exactly what teleguard's own CodeGraph.downstream() follows
-// (codegraph/model.py: LINEAGE_EDGES). Code-structure edges (calls, reads, writes, imports)
-// are left out of this view on purpose; they answer "how is it computed", not "what breaks".
-const LINEAGE_EDGE_TYPES = new Set(["derives", "produces"])
-
 function layout(nodes: GraphNode[], edges: GraphEdge[]) {
   const g = new dagre.graphlib.Graph()
   g.setGraph({ rankdir: "LR", nodesep: 22, ranksep: 70 })
@@ -29,21 +24,6 @@ function layout(nodes: GraphNode[], edges: GraphEdge[]) {
   return { positions, width: g.graph().width ?? 800, height: g.graph().height ?? 500 }
 }
 
-function reachable(adjacency: Map<string, string[]>, start: string): Set<string> {
-  const seen = new Set<string>()
-  const queue = [start]
-  while (queue.length) {
-    const current = queue.shift()!
-    for (const next of adjacency.get(current) ?? []) {
-      if (!seen.has(next)) {
-        seen.add(next)
-        queue.push(next)
-      }
-    }
-  }
-  return seen
-}
-
 export function CodeGraph() {
   const graph = useGraph()
   const guarantees = useGuarantees()
@@ -51,17 +31,7 @@ export function CodeGraph() {
 
   const lineage = useMemo(() => {
     if (!graph.data) return null
-    const nodes = graph.data.nodes.filter((n) => n.type === "field" || n.type === "output")
-    const nodeIds = new Set(nodes.map((n) => n.id))
-    const edges = graph.data.edges.filter(
-      (e) => LINEAGE_EDGE_TYPES.has(e.type) && nodeIds.has(e.source) && nodeIds.has(e.target),
-    )
-    const downstreamAdj = new Map<string, string[]>()
-    const upstreamAdj = new Map<string, string[]>()
-    for (const e of edges) {
-      downstreamAdj.set(e.source, [...(downstreamAdj.get(e.source) ?? []), e.target])
-      upstreamAdj.set(e.target, [...(upstreamAdj.get(e.target) ?? []), e.source])
-    }
+    const { nodes, edges, downstreamAdj, upstreamAdj } = buildLineage(graph.data)
     const { positions, width, height } = layout(nodes, edges)
     return { nodes, edges, downstreamAdj, upstreamAdj, positions, width, height }
   }, [graph.data])
