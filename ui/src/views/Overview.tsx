@@ -5,6 +5,8 @@ import { useGraph, useGuarantees, useScenarios, useRunScenario } from "../api/ho
 import { StatTile } from "../components/StatTile"
 import { ErrorCard, LoadingCard } from "../components/QueryState"
 import { StatusPill } from "../components/StatusPill"
+import { SystemFlow } from "../components/SystemFlow"
+import { PipelineSelector } from "../components/PipelineSelector"
 import type { EvaluationSummary, ScenarioResult } from "../api/types"
 
 export function Overview() {
@@ -78,7 +80,9 @@ export function Overview() {
 
   return (
     <div className="page">
-      <div className="grid grid-4">
+      <PipelineSelector currentPipeline="web_analytics" />
+
+      <div className="grid grid-4" style={{ marginTop: 16 }}>
         <StatTile
           label="Pipeline stages"
           value={stages.length}
@@ -98,6 +102,8 @@ export function Overview() {
           valueColor={ours ? "var(--success)" : undefined}
         />
       </div>
+
+      <SystemFlow />
 
       <div className="grid grid-2">
         <div className="card">
