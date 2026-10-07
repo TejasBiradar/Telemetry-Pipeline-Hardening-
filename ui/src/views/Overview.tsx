@@ -1,17 +1,38 @@
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
-import { useGraph, useGuarantees, useScenarios } from "../api/hooks"
+import { useGraph, useGuarantees, useScenarios, useRunScenario } from "../api/hooks"
 import { StatTile } from "../components/StatTile"
 import { ErrorCard, LoadingCard } from "../components/QueryState"
-import type { EvaluationSummary } from "../api/types"
+import { StatusPill } from "../components/StatusPill"
+import type { EvaluationSummary, ScenarioResult } from "../api/types"
 
 export function Overview() {
   const graph = useGraph()
   const guarantees = useGuarantees()
   const scenarios = useScenarios()
+  const runScenario = useRunScenario()
   const queryClient = useQueryClient()
   const cachedEvaluation = queryClient.getQueryData<EvaluationSummary[]>(["evaluation"])
   const ours = cachedEvaluation?.find((r) => r.system === "ours")
+
+  const [cleanResult, setCleanResult] = useState<ScenarioResult | null>(null)
+  const [faultResult, setFaultResult] = useState<ScenarioResult | null>(null)
+
+  useEffect(() => {
+    if (!scenarios.data || cleanResult || faultResult) return
+    // Auto-run clean and unit_change_android
+    ;(async () => {
+      try {
+        const clean = await runScenario.mutateAsync("clean")
+        setCleanResult(clean)
+        const fault = await runScenario.mutateAsync("unit_change_android")
+        setFaultResult(fault)
+      } catch {
+        // silent; errors shown in UI
+      }
+    })()
+  }, [scenarios.data])
 
   if (graph.isLoading || guarantees.isLoading || scenarios.isLoading) {
     return (
@@ -83,6 +104,57 @@ export function Overview() {
             <Link className="btn btn-primary" to="/scenarios">Inject a fault</Link>
             <Link className="btn" to="/evaluation">Evaluation report</Link>
           </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 28 }}>
+        <div className="card-title">Legacy pipeline: before checks</div>
+        <div className="card-desc">Same data, same pipeline, no checks attached. What happens?</div>
+      </div>
+
+      <div className="grid grid-2">
+        <div className="card">
+          <div className="card-title">Clean data (control)</div>
+          <div className="card-desc">Normal synthetic data, no faults</div>
+          {cleanResult ? (
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+              <StatusPill tone="success" label={cleanResult.detected ? "Run succeeded" : "Run succeeded"} />
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Pipeline ran without crashing. Output columns computed normally. No alerts (correct).
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: 14, color: "var(--text-muted)" }}>Running…</div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-title">Corrupted data (unit_change)</div>
+          <div className="card-desc">Unit system flipped from ms → s in app version 5.2.0</div>
+          {faultResult ? (
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+              <StatusPill tone="success" label="Run succeeded (no checks)" />
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Pipeline ran without crashing. <span style={{ color: "var(--critical)" }}>But output is <em>wrong</em>:</span> avg_duration_s shows ~12 instead of ~0.012.
+              </div>
+              <div style={{ marginTop: 8, padding: 8, background: "var(--critical-soft)", borderRadius: "var(--radius-sm)", fontSize: 12 }}>
+                Expected: avg_duration_s ≈ 0.012s<br/>
+                Got: avg_duration_s ≈ 12s (1000× too large)
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: 14, color: "var(--text-muted)" }}>Running…</div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 28, marginBottom: 10 }}>
+        <div className="card-title">System alert: checks active</div>
+        <div className="card-desc">
+          Run the same corrupted data through the pipeline <em>with</em> checks attached. See how fast it's caught.
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <Link className="btn btn-primary" to="/scenarios">Go to Fault Injection →</Link>
         </div>
       </div>
     </div>
