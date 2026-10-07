@@ -37,8 +37,11 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
   scenarios: () => request<ScenarioInfo[]>("/scenarios"),
-  runScenario: (name: string) =>
-    request<ScenarioResult>(`/scenarios/${encodeURIComponent(name)}/run`, { method: "POST" }),
+  runScenario: (name: string, system: "none" | "ours" = "ours") =>
+    request<ScenarioResult>(
+      `/scenarios/${encodeURIComponent(name)}/run?system=${system}`,
+      { method: "POST" },
+    ),
   evaluation: () => request<EvaluationSummary[]>("/evaluation"),
   refreshEvaluation: () =>
     request<EvaluationSummary[]>("/evaluation/refresh", { method: "POST" }),

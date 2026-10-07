@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { useGraph, useGuarantees, useScenarios, useRunScenario } from "../api/hooks"
@@ -18,10 +18,10 @@ export function Overview() {
   const cachedEvaluation = queryClient.getQueryData<EvaluationSummary[]>(["evaluation"])
   const ours = cachedEvaluation?.find((r) => r.system === "ours")
 
-  const [cleanResult, setCleanResult] = useState<ScenarioResult | null>(null)
-  const [faultResult, setFaultResult] = useState<ScenarioResult | null>(null)
   const [selectedScenario, setSelectedScenario] = useState("unit_change_android")
+  const [checksMode, setChecksMode] = useState<"none" | "ours">("none")
   const [pipelineResult, setPipelineResult] = useState<ScenarioResult | null>(null)
+  const [ranWith, setRanWith] = useState<"none" | "ours" | null>(null)
   const [isRunning, setIsRunning] = useState(false)
 
   const CHECKPOINTS = ["ingest", "clean", "enrich", "aggregate"]
@@ -31,21 +31,6 @@ export function Overview() {
     enrich: "Enrich",
     aggregate: "Aggregate",
   }
-
-  useEffect(() => {
-    if (!scenarios.data || cleanResult || faultResult) return
-    // Auto-run clean and unit_change_android
-    ;(async () => {
-      try {
-        const clean = await runScenario.mutateAsync("clean")
-        setCleanResult(clean)
-        const fault = await runScenario.mutateAsync("unit_change_android")
-        setFaultResult(fault)
-      } catch {
-        // silent; errors shown in UI
-      }
-    })()
-  }, [scenarios.data])
 
   if (graph.isLoading || guarantees.isLoading || scenarios.isLoading) {
     return (
@@ -69,8 +54,9 @@ export function Overview() {
     setIsRunning(true)
     setPipelineResult(null)
     try {
-      const res = await runScenario.mutateAsync(selectedScenario)
+      const res = await runScenario.mutateAsync({ name: selectedScenario, system: checksMode })
       setPipelineResult(res)
+      setRanWith(checksMode)
     } finally {
       setIsRunning(false)
     }
@@ -135,51 +121,13 @@ export function Overview() {
         </div>
       </div>
 
-      <div style={{ marginTop: 28 }}>
-        <div className="card-title">Legacy pipeline: before checks</div>
-        <div className="card-desc">Same data, same pipeline, no checks attached. What happens?</div>
-      </div>
-
-      <div className="grid grid-2">
-        <div className="card">
-          <div className="card-title">Clean data (control)</div>
-          <div className="card-desc">Normal synthetic data, no faults</div>
-          {cleanResult ? (
-            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-              <StatusPill tone="success" label={cleanResult.detected ? "Run succeeded" : "Run succeeded"} />
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Pipeline ran without crashing. Output columns computed normally. No alerts (correct).
-              </div>
-            </div>
-          ) : (
-            <div style={{ marginTop: 14, color: "var(--text-muted)" }}>Running…</div>
-          )}
-        </div>
-
-        <div className="card">
-          <div className="card-title">Corrupted data (unit_change)</div>
-          <div className="card-desc">Unit system flipped from ms → s in app version 5.2.0</div>
-          {faultResult ? (
-            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-              <StatusPill tone="success" label="Run succeeded (no checks)" />
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Pipeline ran without crashing. <span style={{ color: "var(--critical)" }}>But output is <em>wrong</em>:</span> avg_duration_s shows ~12 instead of ~0.012.
-              </div>
-              <div style={{ marginTop: 8, padding: 8, background: "var(--critical-soft)", borderRadius: "var(--radius-sm)", fontSize: 12 }}>
-                Expected: avg_duration_s ≈ 0.012s<br/>
-                Got: avg_duration_s ≈ 12s (1000× too large)
-              </div>
-            </div>
-          ) : (
-            <div style={{ marginTop: 14, color: "var(--text-muted)" }}>Running…</div>
-          )}
-        </div>
-      </div>
-
       {/* Pipeline Visualizer Section */}
       <div style={{ marginTop: 28 }}>
         <div className="card-title">Live Pipeline Execution</div>
-        <div className="card-desc">Trigger a scenario and watch data flow through the pipeline stage by stage.</div>
+        <div className="card-desc">
+          Run a fault scenario through the real pipeline. Toggle checks off to see the plain
+          legacy pipeline succeed while bad data flows straight through; toggle on to see it caught.
+        </div>
       </div>
 
       {/* Pipeline Diagram */}
@@ -213,7 +161,7 @@ export function Overview() {
 
       {/* Controls */}
       <div className="card" style={{ marginTop: 16 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1.4fr 1fr", gap: 16, alignItems: "end" }}>
           <div>
             <label style={{ display: "block", marginBottom: 8, fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>
               Select Fault Scenario:
@@ -243,16 +191,60 @@ export function Overview() {
               <option value="volume_drop_android">volume_drop_android (volume drop)</option>
             </select>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-end" }}>
-            <button
-              onClick={triggerPipeline}
-              disabled={isRunning}
-              className="btn btn-primary"
-              style={{ width: "100%" }}
-            >
-              {isRunning ? "Running Pipeline…" : "▶ Trigger Data Flow"}
-            </button>
+
+          <div>
+            <label style={{ display: "block", marginBottom: 8, fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>
+              Pipeline mode:
+            </label>
+            <div style={{ display: "flex", gap: 0, border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
+              <button
+                onClick={() => setChecksMode("none")}
+                disabled={isRunning}
+                style={{
+                  flex: 1,
+                  padding: "8px 10px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  border: "none",
+                  cursor: isRunning ? "not-allowed" : "pointer",
+                  background: checksMode === "none" ? "var(--critical)" : "var(--surface-2)",
+                  color: checksMode === "none" ? "#fff" : "var(--text-muted)",
+                }}
+              >
+                Checks OFF
+              </button>
+              <button
+                onClick={() => setChecksMode("ours")}
+                disabled={isRunning}
+                style={{
+                  flex: 1,
+                  padding: "8px 10px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  border: "none",
+                  cursor: isRunning ? "not-allowed" : "pointer",
+                  background: checksMode === "ours" ? "var(--success)" : "var(--surface-2)",
+                  color: checksMode === "ours" ? "#fff" : "var(--text-muted)",
+                }}
+              >
+                Checks ON
+              </button>
+            </div>
           </div>
+
+          <button
+            onClick={triggerPipeline}
+            disabled={isRunning}
+            className="btn btn-primary"
+            style={{ width: "100%" }}
+          >
+            {isRunning ? "Running…" : "▶ Trigger Data Flow"}
+          </button>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
+          {checksMode === "none"
+            ? "Checks OFF — the plain legacy pipeline. It will run to completion and report success even on corrupted data."
+            : "Checks ON — our guard is attached. Corrupted batches will be flagged and blocked."}
         </div>
       </div>
 
@@ -279,18 +271,21 @@ export function Overview() {
                 <div>
                   <span className="mono" style={{ fontWeight: 600, color: "var(--text)" }}>Batch {batch.batch}</span>
                   <span style={{ marginLeft: 12, fontSize: 11, color: "var(--text-muted)" }}>
-                    {batch.passed} passed · {batch.warned} warned · {batch.failed} failed
+                    {ranWith === "none"
+                      ? "no checks ran"
+                      : `${batch.passed} passed · ${batch.warned} warned · ${batch.failed} failed`}
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  {batch.failed > 0 && (
+                  {ranWith === "none" && <StatusPill tone="success" label="pipeline succeeded" />}
+                  {ranWith !== "none" && batch.failed > 0 && (
                     <>
                       <StatusPill tone="critical" label={`${batch.failed} failed`} />
                       {batch.blocked && <span style={{ fontSize: 10, fontWeight: 600, color: "var(--critical)" }}>BLOCKED</span>}
                     </>
                   )}
-                  {batch.warned > 0 && batch.failed === 0 && <StatusPill tone="warning" label={`warned`} />}
-                  {batch.passed > 0 && batch.warned === 0 && batch.failed === 0 && (
+                  {ranWith !== "none" && batch.warned > 0 && batch.failed === 0 && <StatusPill tone="warning" label="warned" />}
+                  {ranWith !== "none" && batch.passed > 0 && batch.warned === 0 && batch.failed === 0 && (
                     <StatusPill tone="success" label="pass" />
                   )}
                 </div>
@@ -348,9 +343,26 @@ export function Overview() {
             </div>
           )}
 
-          {pipelineResult.detected && (
+          {ranWith === "none" && pipelineResult.scenario !== "clean" && (
+            <div style={{ marginTop: 14, padding: "10px 12px", background: "var(--critical-soft)", borderRadius: "var(--radius-md)", border: "1px solid var(--critical)", fontSize: 12, color: "var(--text)" }}>
+              <strong>Nothing flagged it.</strong> The fault started at batch {pipelineResult.onset_batch}, but the
+              pipeline reported success on all {pipelineResult.batches.length} batches and the corrupted data reached
+              the outputs. Switch to <strong>Checks ON</strong> and run the same scenario to compare.
+            </div>
+          )}
+          {ranWith === "none" && pipelineResult.scenario === "clean" && (
             <div style={{ marginTop: 14, padding: "10px 12px", background: "var(--success-soft)", borderRadius: "var(--radius-md)", border: "1px solid var(--success)", fontSize: 12, color: "var(--text)" }}>
-              ✓ <strong>Success!</strong> Fault detected at batch {pipelineResult.onset_batch + (pipelineResult.lag_batches ?? 0)}. System is protecting the pipeline.
+              Clean data, no checks: the pipeline succeeds and the output is correct. This is the baseline.
+            </div>
+          )}
+          {ranWith === "ours" && pipelineResult.detected && (
+            <div style={{ marginTop: 14, padding: "10px 12px", background: "var(--success-soft)", borderRadius: "var(--radius-md)", border: "1px solid var(--success)", fontSize: 12, color: "var(--text)" }}>
+              Fault detected at batch {pipelineResult.onset_batch + (pipelineResult.lag_batches ?? 0)} (fault started at batch {pipelineResult.onset_batch}).
+            </div>
+          )}
+          {ranWith === "ours" && !pipelineResult.detected && pipelineResult.scenario !== "clean" && (
+            <div style={{ marginTop: 14, padding: "10px 12px", background: "var(--warning-soft)", borderRadius: "var(--radius-md)", border: "1px solid var(--warning)", fontSize: 12, color: "var(--text)" }}>
+              Not detected. This is a known gap: small-sample text drift is below the minimum sample size at this batch volume.
             </div>
           )}
         </div>

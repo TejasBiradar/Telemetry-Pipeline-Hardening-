@@ -23,7 +23,7 @@ export function FaultInjection() {
     setRunning(name)
     setErrors((prev) => ({ ...prev, [name]: null }))
     try {
-      const result = await runScenario.mutateAsync(name)
+      const result = await runScenario.mutateAsync({ name, system: "ours" })
       setResults((prev) => ({ ...prev, [name]: result }))
     } catch (error) {
       setErrors((prev) => ({ ...prev, [name]: error }))

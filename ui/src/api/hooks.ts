@@ -23,7 +23,10 @@ export function useScenarios() {
 }
 
 export function useRunScenario() {
-  return useMutation({ mutationFn: api.runScenario })
+  return useMutation({
+    mutationFn: ({ name, system }: { name: string; system: "none" | "ours" }) =>
+      api.runScenario(name, system),
+  })
 }
 
 export function useEvaluation() {

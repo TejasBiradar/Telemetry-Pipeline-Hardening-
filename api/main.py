@@ -121,15 +121,24 @@ def list_scenarios() -> list[ScenarioInfo]:
 
 
 @app.post("/scenarios/{name}/run", response_model=ScenarioResultOut)
-def run_one_scenario(name: str) -> ScenarioResultOut:
+def run_one_scenario(name: str, system: str = "ours") -> ScenarioResultOut:
+    """Run one scenario through the legacy pipeline.
+
+    `system` selects what protects the pipeline:
+    - "none": the plain legacy pipeline, no checks (B0). Faulty data flows through and
+      the pipeline succeeds — nothing is caught. This is the "before" demo.
+    - "ours": the legacy pipeline with our checks attached. Faults are caught.
+    """
     state = _state_or_503()
     scenario = next((s for s in state.scenarios if s.name == name), None)
     if scenario is None:
         raise HTTPException(404, f"no such scenario: {name}")
+    if system not in ("none", "ours"):
+        raise HTTPException(400, f"invalid system: {system} (use 'none' or 'ours')")
 
+    checks_for = b0_no_checks() if system == "none" else ours(state.contract, state.baselines)
     cfg = GenConfig(seed=777, n_batches=N_BATCHES, events_per_batch=EVENTS_PER_BATCH)
-    run = run_scenario(state.legacy, state.contract, ours(state.contract, state.baselines),
-                       scenario, cfg)
+    run = run_scenario(state.legacy, state.contract, checks_for, scenario, cfg)
     score = score_scenario(run)
     alerts = [
         AlertOut(alert_id=a.alert_id, severity=a.severity, segment=a.segment,
