@@ -1,22 +1,15 @@
 import { useState } from "react"
-import { Link } from "react-router-dom"
-import { useQueryClient } from "@tanstack/react-query"
 import { useGraph, useGuarantees, useScenarios, useRunScenario } from "../api/hooks"
-import { StatTile } from "../components/StatTile"
 import { ErrorCard, LoadingCard } from "../components/QueryState"
 import { StatusPill } from "../components/StatusPill"
-import { SystemFlow } from "../components/SystemFlow"
 import { PipelineSelector } from "../components/PipelineSelector"
-import type { EvaluationSummary, ScenarioResult } from "../api/types"
+import type { ScenarioResult } from "../api/types"
 
 export function Overview() {
   const graph = useGraph()
   const guarantees = useGuarantees()
   const scenarios = useScenarios()
   const runScenario = useRunScenario()
-  const queryClient = useQueryClient()
-  const cachedEvaluation = queryClient.getQueryData<EvaluationSummary[]>(["evaluation"])
-  const ours = cachedEvaluation?.find((r) => r.system === "ours")
 
   const [selectedScenario, setSelectedScenario] = useState("unit_change_android")
   const [checksMode, setChecksMode] = useState<"none" | "ours">("none")
@@ -48,8 +41,6 @@ export function Overview() {
   if (guarantees.isError) return <div className="page"><ErrorCard error={guarantees.error} /></div>
   if (scenarios.isError) return <div className="page"><ErrorCard error={scenarios.error} /></div>
 
-  const stages = graph.data!.nodes.filter((n) => n.type === "stage")
-
   async function triggerPipeline() {
     setIsRunning(true)
     setPipelineResult(null)
@@ -61,8 +52,6 @@ export function Overview() {
       setIsRunning(false)
     }
   }
-  const pending = guarantees.data!.filter((g) => g.status === "pending").length
-  const confirmed = guarantees.data!.filter((g) => g.status === "confirmed").length
 
   return (
     <div className="page">

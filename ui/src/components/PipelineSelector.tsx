@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 
 export function PipelineSelector({
   onPipelineChange
@@ -8,6 +9,7 @@ export function PipelineSelector({
   const [pipelines, setPipelines] = useState<Array<{id: string; name: string}>>([])
   const [active, setActive] = useState("web_analytics")
   const [loading, setLoading] = useState(false)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     // Load pipelines from API
@@ -23,14 +25,22 @@ export function PipelineSelector({
   const handleChange = async (pipelineId: string) => {
     setLoading(true)
     try {
-      await fetch(`/api/pipelines/${pipelineId}/select`, { method: "PUT" })
-      setActive(pipelineId)
-      onPipelineChange?.(pipelineId)
-      // Reload page to refresh all data
-      window.location.reload()
+      const res = await fetch(`/api/pipelines/${pipelineId}/select`, { method: "PUT" })
+      if (res.ok) {
+        setActive(pipelineId)
+        onPipelineChange?.(pipelineId)
+
+        // Invalidate all React Query caches to fetch fresh data for new pipeline
+        await queryClient.invalidateQueries()
+
+        // Also do a full reload to be extra sure
+        setTimeout(() => {
+          console.log(`Switched to pipeline: ${pipelineId}`)
+          window.location.reload()
+        }, 300)
+      }
     } catch (e) {
       console.error("Failed to select pipeline", e)
-    } finally {
       setLoading(false)
     }
   }
