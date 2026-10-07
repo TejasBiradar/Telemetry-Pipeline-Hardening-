@@ -149,12 +149,13 @@ export function Overview() {
       </div>
 
       <div style={{ marginTop: 28, marginBottom: 10 }}>
-        <div className="card-title">System alert: checks active</div>
+        <div className="card-title">Run pipeline with checks active</div>
         <div className="card-desc">
-          Run the same corrupted data through the pipeline <em>with</em> checks attached. See how fast it's caught.
+          Trigger a scenario and watch data flow through the pipeline. See batch-by-batch check results and where faults are caught.
         </div>
-        <div style={{ marginTop: 14 }}>
-          <Link className="btn btn-primary" to="/scenarios">Go to Fault Injection →</Link>
+        <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
+          <Link className="btn btn-primary" to="/run">Pipeline Visualizer →</Link>
+          <Link className="btn" to="/scenarios">Fault Injection</Link>
         </div>
       </div>
     </div>

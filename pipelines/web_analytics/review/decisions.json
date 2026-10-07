@@ -1,0 +1,11 @@
+{
+  "runtime_columns:-:run.py:38": {
+    "status": "confirmed"
+  },
+  "timestamp_unit:event_ts:run.py:39": {
+    "status": "confirmed"
+  },
+  "dedup_key:event_id:run.py:47": {
+    "status": "confirmed"
+  }
+}
