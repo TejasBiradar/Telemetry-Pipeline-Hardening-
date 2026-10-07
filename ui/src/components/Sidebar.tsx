@@ -2,7 +2,6 @@ import { NavLink } from "react-router-dom"
 
 const NAV = [
   { to: "/", label: "Overview", section: "Monitor", exact: true },
-  { to: "/run", label: "Run Pipeline", section: "Monitor" },
   { to: "/graph", label: "Code Graph", section: "Comprehension" },
   { to: "/guarantees", label: "Guarantees", section: "Comprehension" },
   { to: "/scenarios", label: "Fault Injection", section: "Evaluation" },
