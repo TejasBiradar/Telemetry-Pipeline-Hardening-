@@ -66,7 +66,16 @@ export function Overview() {
 
   return (
     <div className="page">
-      <PipelineSelector currentPipeline="web_analytics" />
+      <PipelineSelector onPipelineChange={() => window.location.reload()} />
+
+      {/* FOCUS: 6-Step Workflow
+          1. Select Pipeline (done above)
+          2. Code Graph Display (Code Graph tab)
+          3. Findings Confirmation (Guarantees tab)
+          4. Characterisation Tests (TODO)
+          5. Config Generation (TODO)
+          6. Drift → Alerts → Lineage (TODO)
+      */}
 
       {/* Pipeline Visualizer Section - Live Demo at Top */}
       <div style={{ marginTop: 28 }}>
@@ -195,58 +204,40 @@ export function Overview() {
         </div>
       </div>
 
+      {/* TODO: Stats tiles (commented out for now - focus on 6-step workflow)
       <div className="grid grid-4" style={{ marginTop: 16 }}>
-        <StatTile
-          label="Pipeline stages"
-          value={stages.length}
-          sub={stages.map((s) => s.label).join(" → ")}
-        />
-        <StatTile
-          label="Reconstructed guarantees"
-          value={`${confirmed}/${guarantees.data!.length}`}
-          sub={`${pending} awaiting human review`}
-          valueColor={pending > 0 ? "var(--warning)" : "var(--success)"}
-        />
+        <StatTile label="Pipeline stages" value={stages.length} sub={stages.map((s) => s.label).join(" → ")} />
+        <StatTile label="Reconstructed guarantees" value={`${confirmed}/${guarantees.data!.length}`} sub={`${pending} awaiting human review`} valueColor={pending > 0 ? "var(--warning)" : "var(--success)"} />
         <StatTile label="Fault scenarios" value={scenarios.data!.length} sub="catalogue, including the clean control" />
-        <StatTile
-          label="Detection recall (ours)"
-          value={ours ? ours.recall.toFixed(2) : "—"}
-          sub={ours ? `precision ${ours.precision.toFixed(2)}` : "not run yet this session"}
-          valueColor={ours ? "var(--success)" : undefined}
-        />
+        <StatTile label="Detection recall (ours)" value={ours ? ours.recall.toFixed(2) : "—"} sub={ours ? `precision ${ours.precision.toFixed(2)}` : "not run yet this session"} valueColor={ours ? "var(--success)" : undefined} />
       </div>
-
       <SystemFlow />
+      */}
 
+      {/* TODO: Legacy pipeline info and next steps (commented out for now)
       <div className="grid grid-2">
         <div className="card">
           <div className="card-title">Legacy pipeline</div>
           <div className="card-desc">web_analytics — frozen, understood from code alone</div>
           <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
             {stages.map((s) => (
-              <span key={s.id} className="pill pill-neutral">
-                {s.label}
-              </span>
+              <span key={s.id} className="pill pill-neutral">{s.label}</span>
             ))}
           </div>
           <div style={{ marginTop: 14 }}>
             <Link className="btn" to="/graph">Explore the code graph →</Link>
           </div>
         </div>
-
         <div className="card">
           <div className="card-title">Run the next step</div>
-          <div className="card-desc">
-            {ours
-              ? "Evaluation already run this session — see the full comparison."
-              : "No evaluation run yet this session. Inject a fault and watch it get caught, or run the full comparison."}
-          </div>
+          <div className="card-desc">{ours ? "Evaluation already run this session — see the full comparison." : "No evaluation run yet this session. Inject a fault and watch it get caught, or run the full comparison."}</div>
           <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
             <Link className="btn btn-primary" to="/scenarios">Inject a fault</Link>
             <Link className="btn" to="/evaluation">Evaluation report</Link>
           </div>
         </div>
       </div>
+      */}
 
       {/* Batch Results */}
       {pipelineResult && (

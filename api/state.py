@@ -71,6 +71,42 @@ def build_state(pipeline_dir: Path = PIPELINE_DIR) -> AppState:
     registry.add(web_analytics)
     registry.select("web_analytics")
 
+    # Add demo pipelines for testing (without full setup)
+    # These show up in the selector but load web_analytics data under the hood
+    user_behavior = PipelineMetadata(
+        id="user_behavior",
+        name="user_behavior_analytics",
+        description="User session and engagement tracking pipeline",
+        source_root=pipeline_dir,
+        adapter_name="python_pandas",
+        entry_point="run.run",
+        contract=web_analytics.contract,  # Reuse contract for demo
+        analysis=web_analytics.analysis,  # Reuse analysis for demo
+        findings_json=web_analytics.findings_json,
+        decisions=web_analytics.decisions,
+        status="ready",
+    )
+    user_behavior._legacy_module = web_analytics._legacy_module  # type: ignore
+    user_behavior._baselines = web_analytics._baselines  # type: ignore
+    registry.add(user_behavior)
+
+    payment_processing = PipelineMetadata(
+        id="payment_processing",
+        name="payment_processing",
+        description="Payment transaction and reconciliation pipeline",
+        source_root=pipeline_dir,
+        adapter_name="python_pandas",
+        entry_point="run.run",
+        contract=web_analytics.contract,  # Reuse contract for demo
+        analysis=web_analytics.analysis,  # Reuse analysis for demo
+        findings_json=web_analytics.findings_json,
+        decisions=web_analytics.decisions,
+        status="ready",
+    )
+    payment_processing._legacy_module = web_analytics._legacy_module  # type: ignore
+    payment_processing._baselines = web_analytics._baselines  # type: ignore
+    registry.add(payment_processing)
+
     return AppState(registry=registry)
 
 
@@ -80,14 +116,55 @@ def _load_pipeline(pipeline_id: str, pipeline_dir: Path) -> PipelineMetadata:
     Reads pre-existing graph.json and contracts.yaml (for web_analytics demo).
     For uploaded pipelines, graph is generated dynamically.
     """
+    from teleguard.adapters.base import AnalysisResult
+    from teleguard.codegraph.model import CodeGraph, Node, Edge, NodeType, EdgeType, Origin, Evidence
+
     legacy = load_module(pipeline_dir / "legacy" / "run.py")
     contract = load_contract(pipeline_dir / "contracts.yaml")
     baselines = build_baseline_store(legacy, n_batches=15, events_per_batch=3000)
 
     # Load graph and findings from disk (web_analytics only)
+    graph_json = json.loads((pipeline_dir / "codegraph" / "graph.json").read_text())
     findings_json = json.loads((pipeline_dir / "codegraph" / "findings.json").read_text())
     decisions_path = pipeline_dir / "review" / "decisions.json"
     decisions = json.loads(decisions_path.read_text()) if decisions_path.exists() else {}
+
+    # Reconstruct CodeGraph from JSON
+    graph = CodeGraph()
+    for node_data in graph_json.get("nodes", []):
+        node = Node(
+            id=node_data["id"],
+            type=NodeType(node_data["type"]),
+            label=node_data["label"],
+            attrs=node_data.get("attrs", {}),
+            origin=Origin(node_data.get("origin", "static")),
+        )
+        graph.add_node(node)
+
+    for edge_data in graph_json.get("edges", []):
+        evidence_data = edge_data.get("evidence")
+        evidence = Evidence(
+            file=evidence_data["file"],
+            line=evidence_data["line"],
+            snippet=evidence_data.get("snippet", ""),
+        ) if evidence_data else None
+        edge = Edge(
+            source=edge_data["source"],
+            target=edge_data["target"],
+            type=EdgeType(edge_data["type"]),
+            evidence=evidence,
+            attrs=edge_data.get("attrs", {}),
+            origin=Origin(edge_data.get("origin", "static")),
+        )
+        graph.add_edge(edge)
+
+    # Create AnalysisResult with the graph
+    analysis = AnalysisResult(
+        graph=graph,
+        findings=[],  # Will be loaded separately
+        stages=[s for s in contract.checkpoints[0].checkpoint.replace("after_", "").split("_") if s],
+        checkpoints=[cp.checkpoint for cp in contract.checkpoints],
+    )
 
     # Create metadata
     metadata = PipelineMetadata(
@@ -97,6 +174,7 @@ def _load_pipeline(pipeline_id: str, pipeline_dir: Path) -> PipelineMetadata:
         adapter_name="python_pandas",
         entry_point="run.run",
         contract=contract,
+        analysis=analysis,  # Now has the full graph!
         findings_json=findings_json,
         decisions=decisions,
         status="ready",
