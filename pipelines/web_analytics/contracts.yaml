@@ -1,0 +1,79 @@
+# Draft contract for web_analytics, built directly from the 15 pending findings in
+# GUARANTEES.md (review/decisions.json is still empty — none are confirmed yet). This
+# unblocks B's work now; swap in A's reviewed version later without changing the engine
+# that reads this file (teleguard/contracts/model.py).
+pipeline: web_analytics
+
+checkpoints:
+  - checkpoint: after_ingest
+    segment_by: client_version
+    min_rows: 50
+    fields:
+      event_id:
+        checks:
+          - type: schema
+            dtype: object
+      user_id:
+        checks:
+          - type: nulls
+            max_null_rate: 0.10
+      duration_ms:
+        checks:
+          # dtype check first: catches a type change (e.g. "1483ms" as text) before
+          # clean()'s "duration_ms / 1000.0" would otherwise crash on it.
+          - type: schema
+            dtype: numeric
+          - type: range
+            range: {min: 0, max: 3600000}
+      error_message:
+        checks:
+          - type: text_drift
+            oov_threshold: 0.20
+            template_threshold: 0.30
+
+  - checkpoint: after_clean
+    segment_by: client_version
+    check_segment_volume: true
+    min_share_of_baseline: 0.5
+    fields:
+      user_id:
+        checks:
+          - type: nulls
+            max_null_rate: 0.02
+      duration_s:
+        checks:
+          # run.py:53 — "duration_s = duration_ms / 1000.0" assumes duration_ms is in ms.
+          - type: unit
+            baseline_stat: median
+            log_ratio_threshold: 0.3
+          - type: range
+            range: {min: 0, max: 300}
+          - type: numeric_drift
+            psi_threshold: 0.10
+            ks_alpha: 0.01
+
+  - checkpoint: after_enrich
+    segment_by: client_version
+    fields:
+      country:
+        checks:
+          # run.py:79 — fixed 5-value lookup table; anything else becomes "Other".
+          - type: schema
+            allowed: ["US", "GB", "DE", "IN", "SG", "Other"]
+
+  - checkpoint: after_aggregate
+    segment_by: platform
+    min_rows: 1
+    fields:
+      error_rate:
+        checks:
+          - type: range
+            range: {min: 0, max: 1}
+      timeout_rate:
+        checks:
+          - type: range
+            range: {min: 0, max: 1}
+      avg_duration_s:
+        checks:
+          - type: range
+            range: {min: 0, max: 300}

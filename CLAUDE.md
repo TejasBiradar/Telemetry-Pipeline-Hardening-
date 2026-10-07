@@ -21,8 +21,9 @@ Project: **Telemetry Pipeline Hardening** (C5i capstone brief #31). Read `docs/A
 ## Commands
 ```bash
 python -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt -e .
-ruff check . && mypy teleguard && pytest --cov=teleguard
+ruff check . && mypy teleguard api && pytest --cov=teleguard
 docker compose up -d db        # needs .env (copy .env.example)
+uvicorn api.main:app --reload  # the API, once pipelines/web_analytics's baselines are built once at startup
 ```
 
 ## Workflow

@@ -19,6 +19,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from datagen.generate import GenConfig, write
 from teleguard import characterisation, freeze, guarantees
 from teleguard.adapters.base import AnalysisResult
 from teleguard.adapters.python_pandas import PythonPandasAdapter
@@ -27,7 +28,6 @@ from teleguard.codegraph.merge import MergeReport, merge
 from teleguard.codegraph.report import report_markdown
 from teleguard.findings import Finding
 from teleguard.tracer import load_module, trace_pipeline
-from datagen.generate import GenConfig, write
 
 
 def _now() -> str:

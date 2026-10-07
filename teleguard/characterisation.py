@@ -124,7 +124,7 @@ def build(pipeline_dir: Path, repo_root: Path) -> list[CaseOutcome]:
             (golden_dir / f"{case}.json").write_text(json.dumps(record, indent=2))
             outcomes.append(CaseOutcome(case, None, type(exc).__name__, str(exc)))
             continue
-        assert isinstance(result, pd.DataFrame)
+        assert isinstance(result, pd.DataFrame)  # nosec B101 - type-narrowing, not a security control
         result.to_csv(golden_dir / f"{case}.csv", index=False)
         stats = {"rows": len(result), "columns": list(result.columns)}
         (golden_dir / f"{case}.json").write_text(json.dumps(stats, indent=2))

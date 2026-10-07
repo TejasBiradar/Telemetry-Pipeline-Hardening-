@@ -16,7 +16,7 @@ class GuardMode(str, Enum):
 
 
 class Status(str, Enum):
-    PASS = "pass"  # noqa: S105 - status value, not a password
+    PASS = "pass"  # nosec B105 - a check status, not a credential; bandit's heuristic misfires here
     WARN = "warn"
     FAIL = "fail"
     ERROR = "error"  # the check itself crashed; recorded, never raised

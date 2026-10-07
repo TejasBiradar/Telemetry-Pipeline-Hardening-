@@ -13,10 +13,16 @@ dependencies = [
     "networkx>=3.2",
     "sqlglot>=30",
     "pydantic>=2.6",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pyyaml>=6.0",
+    "psycopg[binary]>=3.1",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
 ]
 
 [tool.setuptools.packages.find]
-include = ["teleguard", "datagen"]
+include = ["teleguard*", "datagen*", "api*"]
 
 [tool.ruff]
 target-version = "py310"
@@ -32,4 +38,4 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "--cov=teleguard --cov=datagen --cov-report=term-missing"
+addopts = "--cov=teleguard --cov=datagen --cov=api --cov-report=term-missing"

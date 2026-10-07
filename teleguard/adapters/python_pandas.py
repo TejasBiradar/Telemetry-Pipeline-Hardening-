@@ -468,7 +468,7 @@ class _FunctionVisitor(ast.NodeVisitor):
                    "columns created here depend on the data, not the code; confirm them "
                    "with a runtime run", node)
 
-    def _call_DataFrame(self, node: ast.Call, func: ast.Attribute) -> None:  # noqa: N802
+    def _call_DataFrame(self, node: ast.Call, func: ast.Attribute) -> None:
         if node.args and not isinstance(node.args[0], (ast.Dict, ast.Constant)):
             self._find(FindingKind.RUNTIME_COLUMNS, None,
                        "a DataFrame is built from records: its column names come from the "

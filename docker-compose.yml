@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-teleguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teleguard}
+      POSTGRES_DB: ${POSTGRES_DB:-teleguard}
+    ports:
+      - "5432:5432"
+    volumes:
+      - teleguard_db:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teleguard}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  teleguard_db:

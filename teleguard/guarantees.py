@@ -80,8 +80,8 @@ def render(pipeline: str, findings: list[Finding], decisions: Decisions,
         "",
         "> What the pipeline silently assumes. Each rule comes from static analysis of the code,",
         "> and counts as a guarantee only after a person has confirmed it.",
-        f"> Status: **{len(confirmed)} confirmed**, {len(pending)} pending review, "
-        f"{len(rejected)} rejected.",
+        (f"> Status: **{len(confirmed)} confirmed**, {len(pending)} pending review, "
+         f"{len(rejected)} rejected."),
         "",
         "## Confirmed",
     ]

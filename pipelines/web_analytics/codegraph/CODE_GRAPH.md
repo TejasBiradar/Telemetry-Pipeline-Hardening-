@@ -5,7 +5,7 @@
 > guarantee (see GUARANTEES.md).
 
 ## Summary
-17 fields, 5 functions, 1 modules, 9 outputs, 4 stages Â· 53 edges Â·
+17 fields, 5 functions, 1 modules, 9 outputs, 4 stages · 53 edges ·
 15 findings
 
 ## Stages (from the entry function)
