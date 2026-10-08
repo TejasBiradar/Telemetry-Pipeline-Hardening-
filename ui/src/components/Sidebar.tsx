@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { NavLink } from "react-router-dom"
 
 const NAV = [
@@ -20,11 +21,20 @@ function groupBySection() {
 
 export function Sidebar() {
   const sections = groupBySection()
+  const [activeId, setActiveId] = useState("")
+
+  useEffect(() => {
+    fetch("/api/pipelines")
+      .then((r) => r.json())
+      .then((data: { active?: string }) => setActiveId(data.active ?? ""))
+      .catch(() => setActiveId(""))
+  }, [])
+
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <div className="brand-mark">
-          <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+        <div className="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" width="17" height="17">
             <path
               d="M2 13h4l2-7 4 14 3-9 2 6h5"
               stroke="white"
@@ -36,7 +46,7 @@ export function Sidebar() {
         </div>
         <div>
           <div className="brand-name">Driftline</div>
-          <div className="brand-sub">web_analytics</div>
+          <div className="brand-sub">{activeId || "telemetry guard"}</div>
         </div>
       </div>
 

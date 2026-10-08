@@ -22,6 +22,13 @@ export interface GraphEdge {
 export interface CodeGraph {
   nodes: GraphNode[]
   edges: GraphEdge[]
+  stages?: string[]
+}
+
+export interface AnalysisResult {
+  graph: CodeGraph
+  findings: unknown[]
+  stages: string[]
 }
 
 export type GuaranteeStatus = "pending" | "confirmed" | "rejected"
@@ -39,6 +46,7 @@ export interface Guarantee {
 export interface ScenarioInfo {
   name: string
   fault_type: string
+  description?: string
 }
 
 export interface AlertOut {

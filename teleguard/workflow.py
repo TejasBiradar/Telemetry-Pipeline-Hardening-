@@ -22,24 +22,16 @@ from pathlib import Path
 from datagen.generate import GenConfig, write
 from teleguard import characterisation, freeze, guarantees
 from teleguard.adapters.base import AnalysisResult
-from teleguard.adapters.python_pandas import PythonPandasAdapter
-from teleguard.adapters.sql import SQLAdapter
+from teleguard.analyze import analyze_legacy
 from teleguard.codegraph.merge import MergeReport, merge
 from teleguard.codegraph.report import report_markdown
 from teleguard.findings import Finding
+from teleguard.pipeline_loader import source_root_for
 from teleguard.tracer import load_module, trace_pipeline
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-
-def _analyze(legacy: Path, entry: str) -> tuple[AnalysisResult, str]:
-    if any(legacy.rglob("*.py")):
-        return PythonPandasAdapter(entry=entry).analyze(legacy), "python"
-    if any(legacy.rglob("*.sql")):
-        return SQLAdapter().analyze(legacy), "sql"
-    raise SystemExit(f"no .py or .sql files found in {legacy}")
 
 
 def _confirm_by_running(legacy: Path, entry: str, result: AnalysisResult) -> MergeReport | None:
@@ -65,17 +57,20 @@ def _findings_from_json(path: Path) -> list[Finding]:
 
 
 def build(pipeline_dir: Path, entry: str, repo_root: Path) -> None:
-    legacy = pipeline_dir / "legacy"
-    if not any(legacy.glob("*")):
+    legacy = source_root_for(pipeline_dir)
+    if not legacy.is_dir() or not any(legacy.iterdir()):
         raise SystemExit(f"{legacy} is empty: copy the pipeline in first (agents cannot write "
-                         "there, by design)")
+                         "into legacy/, by design; demo pipelines may use source_dir: src)")
     print("1/4 Freeze manifest")
     manifest = freeze.build_manifest(legacy, frozen_at=_now())
     freeze.write_manifest(pipeline_dir / "freeze_manifest.json", manifest)
     print(f"    {len(manifest['files'])} files fingerprinted")
 
     print("2/4 Code graph")
-    result, language = _analyze(legacy, entry)
+    try:
+        result, language = analyze_legacy(legacy, entry=entry)
+    except (FileNotFoundError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
     merged = _confirm_by_running(legacy, entry, result) if language == "python" else None
     out = pipeline_dir / "codegraph"
     out.mkdir(exist_ok=True)
@@ -125,7 +120,7 @@ def review(pipeline_dir: Path, reviewer: str) -> None:
 
 def verify(pipeline_dir: Path) -> int:
     manifest = json.loads((pipeline_dir / "freeze_manifest.json").read_text())
-    problems = freeze.verify(pipeline_dir / "legacy", manifest)
+    problems = freeze.verify(source_root_for(pipeline_dir), manifest)
     for p in problems:
         print(f"  {p}")
     print("OK: pipeline matches its freeze manifest" if not problems

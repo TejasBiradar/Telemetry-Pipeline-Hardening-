@@ -1,0 +1,45 @@
+# Draft contract for user_behavior — checks that align with its fault catalogue.
+pipeline: user_behavior
+
+checkpoints:
+  - checkpoint: after_ingest
+    segment_by: client_version
+    min_rows: 50
+    fields:
+      user_id:
+        checks:
+          - type: nulls
+            max_null_rate: 0.15
+      duration_ms:
+        checks:
+          - type: schema
+            dtype: numeric
+
+  - checkpoint: after_filter_sessions
+    segment_by: client_version
+    check_segment_volume: true
+    min_share_of_baseline: 0.5
+    min_rows: 1
+    fields:
+      user_id:
+        checks:
+          - type: nulls
+            max_null_rate: 0.02
+      session_duration_s:
+        checks:
+          - type: unit
+            baseline_stat: median
+            log_ratio_threshold: 0.3
+          - type: range
+            range: {min: 0, max: 86400}
+          - type: numeric_drift
+            psi_threshold: 0.10
+            ks_alpha: 0.01
+
+  - checkpoint: after_aggregate
+    min_rows: 1
+    fields:
+      session_count:
+        checks:
+          - type: range
+            range: {min: 0, max: 100000}

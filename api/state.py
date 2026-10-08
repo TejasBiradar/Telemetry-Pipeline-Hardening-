@@ -1,33 +1,25 @@
 """Everything the API serves is built once, here, rather than per request.
 
-The baseline store needs ~15 clean batches run through the real pipeline to build
-(~15-20s); the full evaluation report needs all 8 scenarios run against all 3 systems
-(~100s). Both are computed once and cached, not on every GET.
-
-Multi-pipeline support: registry holds all pipelines, one is active. Graphs are
-generated dynamically from code analysis, not loaded from JSON.
+Pipelines are discovered under ``pipelines/``. Each code graph is generated on the fly
+from source analysis. Baselines and fault scenarios are chosen per active pipeline.
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 
-from teleguard.adapters.base import AnalysisResult
-from teleguard.codegraph.model import CodeGraph, Edge, EdgeType, Node, NodeType
-from teleguard.contracts.model import Contract, load_contract
+from teleguard.contracts.model import Contract
 from teleguard.drift.baseline import BaselineStore
 from teleguard.evaluate.baselines import build_baseline_store
 from teleguard.evaluate.engine import EvaluationReport
-from teleguard.inject.scenarios import FaultScenario, default_scenarios
+from teleguard.inject.scenarios import FaultScenario, scenarios_for_pipeline
+from teleguard.pipeline_loader import build_registry
 from teleguard.pipeline_registry import PipelineMetadata, PipelineRegistry
-from teleguard.tracer import load_module
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PIPELINE_DIR = REPO_ROOT / "pipelines" / "web_analytics"
+PIPELINES_ROOT = REPO_ROOT / "pipelines"
 
 
 @dataclass
@@ -35,193 +27,65 @@ class AppState:
     """Multi-pipeline application state."""
 
     registry: PipelineRegistry
-    # Lazily filled on first GET /evaluation, not at startup, so the server comes up fast.
     evaluation_cache: dict[str, list[EvaluationReport]] = field(default_factory=dict)
+    _scenarios_cache: dict[str, list[FaultScenario]] = field(default_factory=dict)
 
     def active_pipeline(self) -> PipelineMetadata | None:
-        """Get the currently active pipeline."""
         return self.registry.active()
 
     def legacy_module(self) -> ModuleType:
-        """Get the active pipeline's Python module (for running it)."""
         active = self.active_pipeline()
-        if active and hasattr(active, "_legacy_module"):
-            return active._legacy_module  # type: ignore
-        raise RuntimeError("No active pipeline loaded")
+        module = getattr(active, "_legacy_module", None) if active else None
+        if isinstance(module, ModuleType):
+            return module
+        raise RuntimeError("No runnable module for active pipeline")
+
+    def stages(self) -> list[str]:
+        active = self.active_pipeline()
+        if active is None:
+            return []
+        return active.stages()
+
+    def scenarios(self) -> list[FaultScenario]:
+        active = self.active_pipeline()
+        if active is None:
+            return []
+        if active.id not in self._scenarios_cache:
+            self._scenarios_cache[active.id] = scenarios_for_pipeline(active.id)
+        return self._scenarios_cache[active.id]
 
     def baselines(self) -> BaselineStore:
-        """Get the active pipeline's baseline store."""
         active = self.active_pipeline()
-        if active and hasattr(active, "_baselines"):
-            return active._baselines  # type: ignore
-        raise RuntimeError("No baselines for active pipeline")
+        if active is None:
+            raise RuntimeError("No active pipeline")
+        cached = getattr(active, "_baselines", None)
+        if cached is not None:
+            return cached  # type: ignore[no-any-return]
+        module = getattr(active, "_legacy_module", None)
+        if module is None:
+            raise RuntimeError("No runnable module for active pipeline")
+        try:
+            store = build_baseline_store(
+                module, n_batches=15, events_per_batch=3000, pipeline_id=active.id
+            )
+        except (KeyError, AttributeError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Baseline build failed for pipeline '{active.id}': {exc}"
+            ) from exc
+        active._baselines = store  # type: ignore[attr-defined]
+        return store
 
     def contract(self) -> Contract:
-        """Get the active pipeline's contract."""
         active = self.active_pipeline()
         if active and active.contract:
             return active.contract
         raise RuntimeError("No contract for active pipeline")
 
 
-def build_state(pipeline_dir: Path = PIPELINE_DIR) -> AppState:
-    """Build initial state with web_analytics as the default pipeline."""
-    registry = PipelineRegistry()
-
-    # Load web_analytics (the built-in demo pipeline)
-    web_analytics = _load_pipeline("web_analytics", pipeline_dir)
-    registry.add(web_analytics)
-    registry.select("web_analytics")
-
-    # Add demo pipelines for testing (with DIFFERENT simplified graphs)
-    # Each has unique stage structure so users can see differences
-
-    # user_behavior: simpler pipeline with fewer stages
-    user_behavior_graph = CodeGraph()
-    user_behavior_graph.add_node(Node(id="mod:run", type=NodeType.MODULE, label="run"))
-    user_behavior_graph.add_node(Node(id="fn:run.session_aggregate", type=NodeType.FUNCTION, label="run.session_aggregate"))
-    user_behavior_graph.add_node(Node(id="field:user_id", type=NodeType.FIELD, label="user_id"))
-    user_behavior_graph.add_node(Node(id="field:session_count", type=NodeType.FIELD, label="session_count"))
-    user_behavior_graph.add_node(Node(id="out:user_sessions", type=NodeType.OUTPUT, label="user_sessions"))
-    user_behavior_graph.add_edge(Edge(source="field:user_id", target="field:session_count", type=EdgeType.DERIVES))
-    user_behavior_graph.add_edge(Edge(source="field:session_count", target="out:user_sessions", type=EdgeType.PRODUCES))
-
-    user_behavior_analysis = AnalysisResult(
-        graph=user_behavior_graph,
-        findings=[],
-        stages=["aggregate"],
-        checkpoints=["after_aggregate"],
-    )
-
-    user_behavior = PipelineMetadata(
-        id="user_behavior",
-        name="user_behavior_analytics",
-        description="User session and engagement tracking pipeline",
-        source_root=pipeline_dir,
-        adapter_name="python_pandas",
-        entry_point="run.run",
-        contract=web_analytics.contract,
-        analysis=user_behavior_analysis,  # Different graph!
-        findings_json=[],
-        decisions={},
-        status="ready",
-    )
-    user_behavior._legacy_module = web_analytics._legacy_module  # type: ignore
-    user_behavior._baselines = web_analytics._baselines  # type: ignore
-    registry.add(user_behavior)
-
-    # payment_processing: different pipeline with payment-related stages
-    payment_graph = CodeGraph()
-    payment_graph.add_node(Node(id="mod:run", type=NodeType.MODULE, label="run"))
-    payment_graph.add_node(Node(id="fn:run.validate", type=NodeType.FUNCTION, label="run.validate"))
-    payment_graph.add_node(Node(id="fn:run.reconcile", type=NodeType.FUNCTION, label="run.reconcile"))
-    payment_graph.add_node(Node(id="field:transaction_id", type=NodeType.FIELD, label="transaction_id"))
-    payment_graph.add_node(Node(id="field:amount", type=NodeType.FIELD, label="amount"))
-    payment_graph.add_node(Node(id="field:status", type=NodeType.FIELD, label="status"))
-    payment_graph.add_node(Node(id="out:settled_payments", type=NodeType.OUTPUT, label="settled_payments"))
-    payment_graph.add_edge(Edge(source="field:transaction_id", target="field:amount", type=EdgeType.READS))
-    payment_graph.add_edge(Edge(source="field:amount", target="field:status", type=EdgeType.DERIVES))
-    payment_graph.add_edge(Edge(source="field:status", target="out:settled_payments", type=EdgeType.PRODUCES))
-
-    payment_analysis = AnalysisResult(
-        graph=payment_graph,
-        findings=[],
-        stages=["validate", "reconcile"],
-        checkpoints=["after_validate", "after_reconcile"],
-    )
-
-    payment_processing = PipelineMetadata(
-        id="payment_processing",
-        name="payment_processing",
-        description="Payment transaction and reconciliation pipeline",
-        source_root=pipeline_dir,
-        adapter_name="python_pandas",
-        entry_point="run.run",
-        contract=web_analytics.contract,
-        analysis=payment_analysis,  # Different graph!
-        findings_json=[],
-        decisions={},
-        status="ready",
-    )
-    payment_processing._legacy_module = web_analytics._legacy_module  # type: ignore
-    payment_processing._baselines = web_analytics._baselines  # type: ignore
-    registry.add(payment_processing)
-
+def build_state(
+    pipelines_root: Path = PIPELINES_ROOT,
+    *,
+    active_id: str | None = None,
+) -> AppState:
+    registry = build_registry(pipelines_root, active_id=active_id)
     return AppState(registry=registry)
-
-
-def _load_pipeline(pipeline_id: str, pipeline_dir: Path) -> PipelineMetadata:
-    """Load a single pipeline from disk.
-
-    Reads pre-existing graph.json and contracts.yaml (for web_analytics demo).
-    For uploaded pipelines, graph is generated dynamically.
-    """
-    from teleguard.adapters.base import AnalysisResult
-    from teleguard.codegraph.model import CodeGraph, Node, Edge, NodeType, EdgeType, Origin, Evidence
-
-    legacy = load_module(pipeline_dir / "legacy" / "run.py")
-    contract = load_contract(pipeline_dir / "contracts.yaml")
-    baselines = build_baseline_store(legacy, n_batches=15, events_per_batch=3000)
-
-    # Load graph and findings from disk (web_analytics only)
-    graph_json = json.loads((pipeline_dir / "codegraph" / "graph.json").read_text())
-    findings_json = json.loads((pipeline_dir / "codegraph" / "findings.json").read_text())
-    decisions_path = pipeline_dir / "review" / "decisions.json"
-    decisions = json.loads(decisions_path.read_text()) if decisions_path.exists() else {}
-
-    # Reconstruct CodeGraph from JSON
-    graph = CodeGraph()
-    for node_data in graph_json.get("nodes", []):
-        node = Node(
-            id=node_data["id"],
-            type=NodeType(node_data["type"]),
-            label=node_data["label"],
-            attrs=node_data.get("attrs", {}),
-            origin=Origin(node_data.get("origin", "static")),
-        )
-        graph.add_node(node)
-
-    for edge_data in graph_json.get("edges", []):
-        evidence_data = edge_data.get("evidence")
-        evidence = Evidence(
-            file=evidence_data["file"],
-            line=evidence_data["line"],
-            snippet=evidence_data.get("snippet", ""),
-        ) if evidence_data else None
-        edge = Edge(
-            source=edge_data["source"],
-            target=edge_data["target"],
-            type=EdgeType(edge_data["type"]),
-            evidence=evidence,
-            attrs=edge_data.get("attrs", {}),
-            origin=Origin(edge_data.get("origin", "static")),
-        )
-        graph.add_edge(edge)
-
-    # Create AnalysisResult with the graph
-    analysis = AnalysisResult(
-        graph=graph,
-        findings=[],  # Will be loaded separately
-        stages=[s for s in contract.checkpoints[0].checkpoint.replace("after_", "").split("_") if s],
-        checkpoints=[cp.checkpoint for cp in contract.checkpoints],
-    )
-
-    # Create metadata
-    metadata = PipelineMetadata(
-        id=pipeline_id,
-        name=contract.pipeline,
-        source_root=pipeline_dir,
-        adapter_name="python_pandas",
-        entry_point="run.run",
-        contract=contract,
-        analysis=analysis,  # Now has the full graph!
-        findings_json=findings_json,
-        decisions=decisions,
-        status="ready",
-    )
-
-    # Store module and baselines for later use (not in AnalysisResult, so we stash them)
-    metadata._legacy_module = legacy  # type: ignore
-    metadata._baselines = baselines  # type: ignore
-
-    return metadata

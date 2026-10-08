@@ -1,46 +1,35 @@
 # Panelist Guide: Using Different Pipelines
 
 ## Current Setup
-The system is currently hardcoded to analyze: **`pipelines/web_analytics/`**
+The API **discovers every folder under `pipelines/`** that has analyzable source
+(`legacy/` by default, or `source_dir` from `pipeline.yaml`). Code graphs are
+generated **on the fly** from the adapter — not from hardcoded nodes.
+
+Built-in demos:
+- `web_analytics` — frozen under `legacy/` (`default: true`)
+- `user_behavior` — agent-maintained under `src/`
+- `payment_processing` — agent-maintained under `src/`
 
 ## How to Run It With a Different Pipeline
 
-### Option A: Replace the pipeline folder (Simple)
-1. Get your pipeline files from the panelist
-2. Replace the contents of `pipelines/web_analytics/` with the new pipeline
-3. Keep the structure the same:
+### Option A: Drop a new folder under `pipelines/`
+1. Create `pipelines/your_pipeline/` with:
    ```
    pipelines/your_pipeline/
-   ├── legacy/
+   ├── pipeline.yaml           # name, entry, optional source_dir / default
+   ├── legacy/  (or src/)
    │   └── run.py              # The pipeline code to analyze
    ├── HOOKS.md                # Hook instrumentation points
    ├── contracts.yaml          # Data quality checks
-   ├── codegraph/
-   │   ├── graph.json          # Generated code graph
-   │   └── findings.json       # Reconstructed findings
    └── review/
-       └── decisions.json      # Approval decisions
+       └── decisions.json      # Approval decisions (optional)
    ```
+2. Restart the API — it will analyze the new tree automatically.
+3. Switch to it in the UI pipeline selector (`GET /pipelines`, `PUT /pipelines/{id}/select`).
 
-### Option B: Add multiple pipelines and switch (Better for demos)
-Currently requires backend changes. The flow would be:
-
-1. **Backend**: Add pipeline selection to `api/state.py`
-   ```python
-   # Currently hardcoded:
-   PIPELINE_DIR = REPO_ROOT / "pipelines" / "web_analytics"
-   
-   # Should become:
-   PIPELINE_DIR = REPO_ROOT / "pipelines" / selected_pipeline
-   ```
-
-2. **API**: Add endpoint to list and switch pipelines
-   ```
-   GET /pipelines                    # List available pipelines
-   POST /pipeline/switch?name=X      # Switch to pipeline X
-   ```
-
-3. **UI**: Pipeline Selector (already built) calls the switch endpoint
+### Option B: Switch among the built-in demos
+Use the ACTIVE PIPELINE selector in the UI (or `PUT /pipelines/{id}/select`).
+Each selection serves that pipeline's on-the-fly graph and findings.
 
 ### Option C: What the Panelist Needs to Provide
 

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 class ScenarioInfo(BaseModel):
     name: str
     fault_type: str
+    description: str = ""
 
 
 class LineageStepOut(BaseModel):

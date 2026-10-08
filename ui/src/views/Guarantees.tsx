@@ -27,8 +27,9 @@ export function Guarantees() {
     <div className="page">
       <div className="card-title">What the pipeline silently assumes</div>
       <div className="card-desc">
-        Each row comes from static analysis of the code, not from documentation — it only
-        counts as a guarantee once a person confirms it.
+        Each row comes from static analysis. <strong>Confirm</strong> to enforce it when
+        Checks ON runs; <strong>Reject</strong> (or leave pending) to leave it out of the
+        live trigger.
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

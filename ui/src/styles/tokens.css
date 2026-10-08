@@ -1,47 +1,49 @@
 :root {
-  /* Surfaces - Light Mode */
-  --bg: #f8f9fa;
-  --surface: #ffffff;
-  --surface-2: #f0f2f5;
-  --surface-hover: #e8ecf1;
-  --border: #d0d7e0;
-  --border-strong: #b8c1ce;
+  /* Surfaces — cool ink paper, not flat white */
+  --bg: #eef2f1;
+  --bg-glow: #d5ebe6;
+  --surface: #fbfcfc;
+  --surface-2: #e8eeec;
+  --surface-hover: #dde6e3;
+  --border: #c5d0cc;
+  --border-strong: #9aada6;
 
   /* Text */
-  --text: #1a1d29;
-  --text-muted: #6b7280;
-  --text-faint: #9ca3af;
+  --text: #14201c;
+  --text-muted: #5a6b65;
+  --text-faint: #84948e;
 
-  /* Brand */
-  --accent: #6366f1;
-  --accent-strong: #4f46e5;
-  --accent-soft: rgba(99, 102, 241, 0.1);
-  --accent-text: #4f46e5;
+  /* Brand — deep teal (not purple) */
+  --accent: #0f766e;
+  --accent-strong: #0b5f58;
+  --accent-soft: rgba(15, 118, 110, 0.12);
+  --accent-text: #0b5f58;
 
-  /* Secondary data accent (charts, sparklines) */
-  --data: #0891b2;
-  --data-soft: rgba(8, 145, 178, 0.1);
+  /* Secondary data accent */
+  --data: #b45309;
+  --data-soft: rgba(180, 83, 9, 0.12);
 
   /* Semantic */
-  --success: #10b981;
-  --success-soft: rgba(16, 185, 129, 0.1);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.1);
-  --critical: #ef4444;
-  --critical-soft: rgba(239, 68, 68, 0.1);
+  --success: #047857;
+  --success-soft: rgba(4, 120, 87, 0.12);
+  --warning: #b45309;
+  --warning-soft: rgba(180, 83, 9, 0.12);
+  --critical: #b91c1c;
+  --critical-soft: rgba(185, 28, 28, 0.12);
 
-  /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  /* Elevation — single soft layer */
+  --shadow-sm: 0 1px 2px rgba(20, 32, 28, 0.06);
+  --shadow-md: 0 8px 24px rgba(20, 32, 28, 0.08);
 
   /* Type */
-  --font-ui: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-ui: "Sora", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-display: "Sora", "Segoe UI", sans-serif;
 
   /* Radii */
-  --radius-sm: 7px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
 
   color-scheme: light;
 }

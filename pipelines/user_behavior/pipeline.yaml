@@ -1,0 +1,6 @@
+name: User Behavior Analytics
+description: Session-based engagement tracking (ingest → filter → aggregate)
+entry: run.run
+adapter: python_pandas
+# Agent-maintained demo source (legacy/ is frozen and human-owned).
+source_dir: src

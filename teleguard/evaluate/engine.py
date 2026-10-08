@@ -10,20 +10,24 @@ no matter how many alerts it produced).
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 from datagen.generate import GenConfig, generate
 from teleguard.alerts.manager import AlertManager
 from teleguard.contracts.model import Contract
 from teleguard.evaluate.comparison_systems import ChecksFor
-from teleguard.evaluate.pipeline_runner import run_batch, write_single_batch
+from teleguard.evaluate.pipeline_runner import STAGES, run_batch, write_single_batch
 from teleguard.guard import Guard
 from teleguard.inject.faults import FaultType, Injection
 from teleguard.inject.scenarios import FaultScenario
 from teleguard.models import Alert, CheckResult, GuardMode
 from teleguard.sinks import MemorySink
+
+GenerateFn = Callable[[GenConfig], list[list[dict[str, Any]]]]
 
 
 @dataclass
@@ -37,10 +41,20 @@ class ScenarioRun:
     blocked_batches: list[int] = field(default_factory=list)
 
 
-def run_scenario(legacy: ModuleType, contract: Contract, checks_for: ChecksFor,
-                 scenario: FaultScenario, gen_cfg: GenConfig,
-                 guard_mode: GuardMode = GuardMode.ENFORCE) -> ScenarioRun:
-    base_batches = generate(gen_cfg)
+def run_scenario(
+    legacy: ModuleType,
+    contract: Contract,
+    checks_for: ChecksFor,
+    scenario: FaultScenario,
+    gen_cfg: GenConfig,
+    guard_mode: GuardMode = GuardMode.ENFORCE,
+    *,
+    stages: list[str] | tuple[str, ...] | None = None,
+    generate_batches: GenerateFn | None = None,
+) -> ScenarioRun:
+    gen = generate_batches or generate
+    stage_names = list(stages) if stages is not None else list(STAGES)
+    base_batches = gen(gen_cfg)
     mutated, injection = scenario.apply(base_batches)
 
     sink = MemorySink()
@@ -55,8 +69,15 @@ def run_scenario(legacy: ModuleType, contract: Contract, checks_for: ChecksFor,
             before = len(sink.results)
             batch_dir = Path(tmp) / f"b{i:04d}"
             write_single_batch(events, batch_dir)
-            outcome = run_batch(legacy, batch_dir, contract.pipeline, f"batch_{i:04d}",
-                               contract, guard)
+            outcome = run_batch(
+                legacy,
+                batch_dir,
+                contract.pipeline,
+                f"batch_{i:04d}",
+                contract,
+                guard,
+                stages=stage_names,
+            )
             results_by_batch.append(sink.results[before:])
             for alert_id in sink.alerts:
                 alert_first_batch.setdefault(alert_id, i)
@@ -136,14 +157,38 @@ class EvaluationReport:
         }
 
 
-def evaluate(system_name: str, legacy: ModuleType, contract: Contract, checks_for: ChecksFor,
-            scenarios: list[FaultScenario], n_batches: int = 10, events_per_batch: int = 400,
-            seed: int = 777, window: int = 5,
-            guard_mode: GuardMode = GuardMode.ENFORCE) -> EvaluationReport:
+def evaluate(
+    system_name: str,
+    legacy: ModuleType,
+    contract: Contract,
+    checks_for: ChecksFor,
+    scenarios: list[FaultScenario],
+    n_batches: int = 10,
+    events_per_batch: int = 400,
+    seed: int = 777,
+    window: int = 5,
+    guard_mode: GuardMode = GuardMode.ENFORCE,
+    *,
+    stages: list[str] | tuple[str, ...] | None = None,
+    generate_batches: GenerateFn | None = None,
+) -> EvaluationReport:
     gen_cfg = GenConfig(seed=seed, n_batches=n_batches, events_per_batch=events_per_batch)
-    scores = [score_scenario(run_scenario(legacy, contract, checks_for, s, gen_cfg, guard_mode),
-                             window)
-             for s in scenarios]
+    scores = [
+        score_scenario(
+            run_scenario(
+                legacy,
+                contract,
+                checks_for,
+                s,
+                gen_cfg,
+                guard_mode,
+                stages=stages,
+                generate_batches=generate_batches,
+            ),
+            window,
+        )
+        for s in scenarios
+    ]
 
     total_tp = sum(s.true_positive_alerts for s in scores)
     total_fp = sum(s.false_positive_alerts for s in scores)

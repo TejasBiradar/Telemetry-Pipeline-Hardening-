@@ -1,0 +1,68 @@
+# Draft contract for payment_processing — checks that align with its fault catalogue.
+pipeline: payment_processing
+
+checkpoints:
+  - checkpoint: after_ingest
+    segment_by: payment_method
+    min_rows: 50
+    fields:
+      transaction_id:
+        checks:
+          - type: schema
+            dtype: object
+      amount_cents:
+        checks:
+          - type: schema
+            dtype: numeric
+          - type: range
+            range: {min: 0, max: 99999999}
+      user_id:
+        checks:
+          - type: nulls
+            max_null_rate: 0.15
+      error_message:
+        checks:
+          - type: text_drift
+            oov_threshold: 0.25
+            template_threshold: 0.35
+
+  - checkpoint: after_clean
+    segment_by: payment_method
+    check_segment_volume: true
+    min_share_of_baseline: 0.5
+    min_rows: 1
+    fields:
+      amount_usd:
+        checks:
+          - type: unit
+            baseline_stat: median
+            log_ratio_threshold: 0.3
+          - type: range
+            range: {min: 0, max: 1000000}
+          - type: numeric_drift
+            psi_threshold: 0.10
+            ks_alpha: 0.01
+      status:
+        checks:
+          - type: schema
+            allowed: ["settled", "declined", "pending", "refunded"]
+      user_id:
+        checks:
+          - type: nulls
+            max_null_rate: 0.02
+
+  - checkpoint: after_enrich
+    min_rows: 1
+    fields:
+      merchant_region:
+        checks:
+          - type: schema
+            allowed: ["North America", "Europe", "Asia Pacific", "Other"]
+
+  - checkpoint: after_reconcile
+    min_rows: 1
+    fields:
+      total_volume_usd:
+        checks:
+          - type: range
+            range: {min: 0, max: 1.0e12}

@@ -1,0 +1,5 @@
+name: Payment Processing
+description: Payment clean → enrich → reconcile (pandas demo pipeline)
+entry: run.run
+adapter: python_pandas
+source_dir: src

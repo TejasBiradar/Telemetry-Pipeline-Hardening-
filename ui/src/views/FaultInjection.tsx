@@ -36,9 +36,8 @@ export function FaultInjection() {
     <div className="page">
       <div className="card-title">Inject a fault, watch it get caught</div>
       <div className="card-desc">
-        Each run generates fresh synthetic data, deliberately breaks it one way, and runs it
-        through the real pipeline with every check attached. Same seed every time, so the
-        result is reproducible, not theatre.
+        Faults for the <strong>active pipeline</strong> only. Switch pipelines to see a different
+        catalogue. Confirm matching guarantees, then run with Checks ON to see detection details.
       </div>
 
       <div className="grid grid-2" style={{ alignItems: "start" }}>
@@ -51,6 +50,9 @@ export function FaultInjection() {
                 <div>
                   <div className="card-title">{scenario.name}</div>
                   <div className="card-desc mono">{scenario.fault_type}</div>
+                  {scenario.description && (
+                    <div className="card-desc" style={{ marginTop: 6 }}>{scenario.description}</div>
+                  )}
                 </div>
                 <button
                   className="btn btn-primary"

@@ -17,22 +17,21 @@ export function TopBar({ title }: { title: string }) {
 
   useEffect(() => {
     fetch("/api/pipelines")
-      .then(r => r.json())
+      .then((r) => r.json())
       .then(setPipelineInfo)
       .catch(() => {})
   }, [])
 
-  const activePipelineName = pipelineInfo?.pipelines.find(p => p.id === pipelineInfo.active)?.name ?? "Loading..."
+  const activePipelineName =
+    pipelineInfo?.pipelines.find((p) => p.id === pipelineInfo.active)?.name ?? "…"
 
   return (
     <header className="topbar">
       <div>
         <h1>{title}</h1>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-          📦 {activePipelineName}
-        </div>
+        <div className="topbar-pipeline">{activePipelineName}</div>
       </div>
-      <div className="topbar-right" style={{ display: "flex", gap: 12, alignItems: "center" }}>
+      <div className="topbar-right">
         {confirmedCount > 0 && (
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
             {confirmedCount} check{confirmedCount !== 1 ? "s" : ""} active

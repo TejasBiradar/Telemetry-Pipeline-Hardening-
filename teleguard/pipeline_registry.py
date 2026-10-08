@@ -48,15 +48,14 @@ class PipelineMetadata:
         return self.findings_json
 
     def stages(self) -> list[str]:
-        """Return ordered stage names."""
+        """Return ordered stage labels (not internal node ids)."""
         if self.analysis is None:
             return []
-        return self.analysis.stages
+        return [self.analysis.graph.node(s).label for s in self.analysis.stages]
 
     def checkpoints(self) -> list[str]:
         """Return checkpoint names (after each stage + output)."""
-        stages = self.stages()
-        return [f"after_{s}" for s in stages] + ["output"]
+        return [f"after_{s}" for s in self.stages()] + ["output"]
 
 
 @dataclass
@@ -64,7 +63,7 @@ class PipelineRegistry:
     """In-memory registry of available pipelines."""
 
     pipelines: dict[str, PipelineMetadata] = field(default_factory=dict)
-    active_pipeline_id: str = "web_analytics"  # Default to web_analytics
+    active_pipeline_id: str = ""
 
     def add(self, pipeline: PipelineMetadata) -> None:
         """Add a pipeline to the registry."""

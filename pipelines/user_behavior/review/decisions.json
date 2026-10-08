@@ -1,0 +1,35 @@
+{
+  "runtime_columns:-:run.py:38": {
+    "status": "confirmed"
+  },
+  "timestamp_unit:session_start_ms:run.py:40": {
+    "status": "confirmed"
+  },
+  "required_field:user_id:run.py:46": {
+    "status": "rejected"
+  },
+  "unit_conversion:duration_ms:run.py:47": {
+    "status": "rejected"
+  },
+  "row_filter:action:run.py:49": {
+    "status": "rejected"
+  },
+  "row_filter:session_duration_s:run.py:50": {
+    "status": "rejected"
+  },
+  "string_format:client_version:run.py:51": {
+    "status": "rejected"
+  },
+  "group_key_drops_nulls:user_id:run.py:58": {
+    "status": "rejected"
+  },
+  "unused_field:session_start:run.py:40": {
+    "status": "rejected"
+  },
+  "unused_field:major_version:run.py:51": {
+    "status": "rejected"
+  },
+  "unused_field:engagement_score:run.py:67": {
+    "status": "rejected"
+  }
+}

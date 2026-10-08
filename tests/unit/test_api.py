@@ -23,6 +23,21 @@ def test_health_is_ok_once_started(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_lists_discovered_pipelines(client: TestClient) -> None:
+    data = client.get("/pipelines").json()
+    ids = {p["id"] for p in data["pipelines"]}
+    assert ids == {"web_analytics", "user_behavior", "payment_processing"}
+    assert data["active"] == "web_analytics"
+
+
+def test_selecting_user_behavior_returns_its_own_graph(client: TestClient) -> None:
+    assert client.put("/pipelines/user_behavior/select").status_code == 200
+    graph = client.get("/pipeline/graph").json()
+    assert graph["stages"] == ["ingest", "filter_sessions", "aggregate"]
+    # Restore default so later tests keep using web_analytics baselines/scenarios.
+    assert client.put("/pipelines/web_analytics/select").status_code == 200
+
+
 def test_pipeline_graph_has_the_real_web_analytics_stages(client: TestClient) -> None:
     graph = client.get("/pipeline/graph").json()
     stage_labels = [n["label"] for n in graph["nodes"] if n["type"] == "stage"]

@@ -7,5 +7,41 @@
   },
   "dedup_key:event_id:run.py:47": {
     "status": "confirmed"
+  },
+  "required_field:user_id:run.py:50": {
+    "status": "confirmed"
+  },
+  "unit_conversion:duration_ms:run.py:53": {
+    "status": "confirmed"
+  },
+  "row_filter:duration_s:run.py:56": {
+    "status": "confirmed"
+  },
+  "keyword_match:error_message:run.py:60": {
+    "status": "confirmed"
+  },
+  "string_format:client_version:run.py:63": {
+    "status": "confirmed"
+  },
+  "default_fill:session_id:run.py:79": {
+    "status": "confirmed"
+  },
+  "unmapped_to_null:session_id:run.py:79": {
+    "status": "confirmed"
+  },
+  "row_filter:action:run.py:90": {
+    "status": "confirmed"
+  },
+  "group_key_drops_nulls:date:run.py:92": {
+    "status": "confirmed"
+  },
+  "group_key_drops_nulls:platform:run.py:92": {
+    "status": "confirmed"
+  },
+  "group_key_drops_nulls:country:run.py:92": {
+    "status": "confirmed"
+  },
+  "unused_field:major_version:run.py:63": {
+    "status": "confirmed"
   }
 }

@@ -1,31 +1,32 @@
-import { useState } from "react"
-import { useGraph, useGuarantees, useScenarios, useRunScenario } from "../api/hooks"
+import { useEffect, useState } from "react"
+import { useGraph, useScenarios, useRunScenario } from "../api/hooks"
 import { ErrorCard, LoadingCard } from "../components/QueryState"
 import { StatusPill } from "../components/StatusPill"
 import { PipelineSelector } from "../components/PipelineSelector"
 import type { ScenarioResult } from "../api/types"
 
 export function Overview() {
-  const graph = useGraph()
-  const guarantees = useGuarantees()
   const scenarios = useScenarios()
+  const graph = useGraph()
   const runScenario = useRunScenario()
 
-  const [selectedScenario, setSelectedScenario] = useState("unit_change_android")
+  const [selectedScenario, setSelectedScenario] = useState("")
   const [checksMode, setChecksMode] = useState<"none" | "ours">("none")
   const [pipelineResult, setPipelineResult] = useState<ScenarioResult | null>(null)
   const [ranWith, setRanWith] = useState<"none" | "ours" | null>(null)
   const [isRunning, setIsRunning] = useState(false)
 
-  const CHECKPOINTS = ["ingest", "clean", "enrich", "aggregate"]
-  const CHECKPOINT_NAMES: Record<string, string> = {
-    ingest: "Ingest",
-    clean: "Clean",
-    enrich: "Enrich",
-    aggregate: "Aggregate",
-  }
+  const stages = graph.data?.stages ?? []
 
-  if (graph.isLoading || guarantees.isLoading || scenarios.isLoading) {
+  useEffect(() => {
+    const list = scenarios.data
+    if (!list?.length) return
+    if (!list.some((s) => s.name === selectedScenario)) {
+      setSelectedScenario(list[0].name)
+    }
+  }, [scenarios.data, selectedScenario])
+
+  if (scenarios.isLoading || graph.isLoading) {
     return (
       <div className="page">
         <div className="grid grid-4">
@@ -37,9 +38,10 @@ export function Overview() {
       </div>
     )
   }
-  if (graph.isError) return <div className="page"><ErrorCard error={graph.error} /></div>
-  if (guarantees.isError) return <div className="page"><ErrorCard error={guarantees.error} /></div>
   if (scenarios.isError) return <div className="page"><ErrorCard error={scenarios.error} /></div>
+  if (graph.isError) return <div className="page"><ErrorCard error={graph.error} /></div>
+
+  const selectedMeta = scenarios.data?.find((s) => s.name === selectedScenario)
 
   async function triggerPipeline() {
     setIsRunning(true)
@@ -57,33 +59,24 @@ export function Overview() {
     <div className="page">
       <PipelineSelector onPipelineChange={() => window.location.reload()} />
 
-      {/* FOCUS: 6-Step Workflow
-          1. Select Pipeline (done above)
-          2. Code Graph Display (Code Graph tab)
-          3. Findings Confirmation (Guarantees tab)
-          4. Characterisation Tests (TODO)
-          5. Config Generation (TODO)
-          6. Drift → Alerts → Lineage (TODO)
-      */}
-
-      {/* Pipeline Visualizer Section - Live Demo at Top */}
       <div style={{ marginTop: 28 }}>
         <div className="card-title">Live Pipeline Execution</div>
         <div className="card-desc">
-          Run a fault scenario through the real pipeline. Toggle checks off to see the plain
-          legacy pipeline succeed while bad data flows straight through; toggle on to see it caught.
+          Checks ON enforces only <strong>confirmed</strong> guarantees. Rejected or pending
+          findings do not run. If you rejected everything, Checks ON behaves like Checks OFF.
         </div>
       </div>
 
-      {/* Pipeline Diagram */}
+      {/* Pipeline Diagram — stages from active pipeline analysis */}
       <div className="card" style={{ marginTop: 16 }}>
         <div style={{ display: "flex", gap: 20, alignItems: "center", justifyContent: "space-around", padding: "20px 0", overflowX: "auto" }}>
-          {CHECKPOINTS.map((cp, idx) => (
+          {stages.map((cp, idx) => (
             <div key={cp} style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div
                 style={{
-                  width: 100,
+                  minWidth: 100,
                   height: 60,
+                  padding: "0 10px",
                   border: "2px solid var(--accent)",
                   borderRadius: "var(--radius-md)",
                   display: "flex",
@@ -96,9 +89,9 @@ export function Overview() {
                   color: "var(--accent-text)",
                 }}
               >
-                {CHECKPOINT_NAMES[cp]}
+                {cp}
               </div>
-              {idx < CHECKPOINTS.length - 1 && <div style={{ fontSize: 20, color: "var(--text-muted)" }}>→</div>}
+              {idx < stages.length - 1 && <div style={{ fontSize: 20, color: "var(--text-muted)" }}>→</div>}
             </div>
           ))}
         </div>
@@ -114,27 +107,21 @@ export function Overview() {
             <select
               value={selectedScenario}
               onChange={(e) => setSelectedScenario(e.target.value)}
-              disabled={isRunning}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                color: "var(--text)",
-                cursor: isRunning ? "not-allowed" : "pointer",
-                fontFamily: "var(--font-ui)",
-              }}
+              disabled={isRunning || !scenarios.data?.length}
+              className="select"
+              style={{ width: "100%" }}
             >
-              <option value="clean">clean (control - no faults)</option>
-              <option value="unit_change_android">unit_change_android (unit flipped)</option>
-              <option value="feed_stops_ios">feed_stops_ios (missing feed)</option>
-              <option value="new_nullable_web">new_nullable_web (new nullable field)</option>
-              <option value="type_change_android">type_change_android (type mismatch)</option>
-              <option value="gradual_drift_ios">gradual_drift_ios (gradual drift)</option>
-              <option value="text_change_web">text_change_web (text change)</option>
-              <option value="volume_drop_android">volume_drop_android (volume drop)</option>
+              {(scenarios.data ?? []).map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name} ({s.fault_type})
+                </option>
+              ))}
             </select>
+            {selectedMeta?.description && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--text-muted)" }}>
+                {selectedMeta.description}
+              </div>
+            )}
           </div>
 
           <div>
@@ -183,13 +170,13 @@ export function Overview() {
             className="btn btn-primary"
             style={{ width: "100%" }}
           >
-            {isRunning ? "Running…" : "▶ Trigger Data Flow"}
+            {isRunning ? "Running…" : "Trigger data flow"}
           </button>
         </div>
         <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
           {checksMode === "none"
-            ? "Checks OFF — the plain legacy pipeline. It will run to completion and report success even on corrupted data."
-            : "Checks ON — our guard is attached. Corrupted batches will be flagged and blocked."}
+            ? "Checks OFF — plain legacy pipeline; no guarantees enforced."
+            : "Checks ON — only confirmed guarantees are enforced (from Guarantees page)."}
         </div>
       </div>
 
@@ -255,6 +242,11 @@ export function Overview() {
                       ? "no checks ran"
                       : `${batch.passed} passed · ${batch.warned} warned · ${batch.failed} failed`}
                   </span>
+                  {ranWith !== "none" && batch.failing_checks.length > 0 && (
+                    <div className="mono" style={{ fontSize: 11, color: "var(--critical)", marginTop: 4 }}>
+                      {batch.failing_checks.join(" · ")}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   {ranWith === "none" && <StatusPill tone="success" label="pipeline succeeded" />}
@@ -298,7 +290,7 @@ export function Overview() {
           {/* Alerts */}
           {pipelineResult.alerts.length > 0 && (
             <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-              <div className="card-title" style={{ fontSize: 13 }}>🚨 Alerts Raised</div>
+              <div className="card-title" style={{ fontSize: 13 }}>Alerts raised</div>
               <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                 {pipelineResult.alerts.map((alert) => (
                   <div

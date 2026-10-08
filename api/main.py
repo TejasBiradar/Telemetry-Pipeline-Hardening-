@@ -17,6 +17,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from api.schemas import (
     AlertOut,
@@ -29,10 +30,15 @@ from api.schemas import (
     ScenarioResultOut,
 )
 from api.state import AppState, build_state
+from datagen.catalog import generate_for_pipeline
 from datagen.generate import GenConfig
+from teleguard.contracts.decisions_filter import (
+    contract_for_decisions,
+    contract_needs_baselines,
+)
+from teleguard.drift.baseline import BaselineStore
 from teleguard.evaluate.comparison_systems import b0_no_checks, b1_naive_schema_only, ours
 from teleguard.evaluate.engine import EvaluationReport, evaluate, run_scenario, score_scenario
-from teleguard.inject.scenarios import default_scenarios
 from teleguard.models import CheckResult, Status
 
 N_BATCHES = 10
@@ -87,12 +93,15 @@ def select_pipeline(pipeline_id: str) -> dict[str, object]:
 
 @app.get("/pipeline/graph")
 def get_graph() -> dict[str, object]:
-    """Get code graph for the active pipeline."""
+    """Get code graph and pipeline stages for the active pipeline."""
     state = _state_or_503()
     active = state.active_pipeline()
     if not active:
         raise HTTPException(503, "No active pipeline")
-    return active.graph()  # type: ignore
+    graph_data = active.graph()
+    # Include stages so the UI can render stage-based visualization
+    graph_data["stages"] = active.stages()
+    return graph_data
 
 
 @app.get("/pipeline/guarantees", response_model=list[GuaranteeOut])
@@ -150,15 +159,45 @@ def _save_decisions(state: AppState) -> None:
     decisions_path.write_text(json.dumps(active.decisions, indent=2))
 
 
+class CodegenRequest(BaseModel):
+    code: str
+
+
+@app.post("/pipeline/codegraph/generate")
+def generate_codegraph(req: CodegenRequest) -> dict[str, object]:
+    """Generate a code graph from a pipeline source string (on the fly, no cache)."""
+    import tempfile
+    import traceback
+
+    from teleguard.analyze import analyze_legacy
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir) / "run.py"
+            tmppath.write_text(req.code)
+            analysis, _language = analyze_legacy(Path(tmpdir), entry="run.run")
+            return {
+                "success": True,
+                "graph": analysis.graph.to_json(),
+                "stages": [analysis.graph.node(s).label for s in analysis.stages],
+                "findings": [f.to_json() for f in analysis.findings],
+            }
+    except (OSError, ValueError, KeyError, AttributeError, TypeError, SyntaxError) as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+
 @app.get("/scenarios", response_model=list[ScenarioInfo])
 def list_scenarios() -> list[ScenarioInfo]:
-    """List fault scenarios available for the active pipeline."""
+    """List fault scenarios for the *active* pipeline (catalogue differs per pipeline)."""
     state = _state_or_503()
-    # Load scenarios lazily (using web_analytics scenarios for now)
-    if not hasattr(state, "_scenarios"):
-        state._scenarios = default_scenarios(onset_batch=4)  # type: ignore
-    return [ScenarioInfo(name=s.name, fault_type=s.fault_type.value)
-           for s in state._scenarios]  # type: ignore
+    return [
+        ScenarioInfo(name=s.name, fault_type=s.fault_type.value, description=s.description)
+        for s in state.scenarios()
+    ]
 
 
 @app.post("/scenarios/{name}/run", response_model=ScenarioResultOut)
@@ -168,25 +207,49 @@ def run_one_scenario(name: str, system: str = "ours") -> ScenarioResultOut:
     `system` selects what protects the pipeline:
     - "none": the plain legacy pipeline, no checks (B0). Faulty data flows through and
       the pipeline succeeds — nothing is caught. This is the "before" demo.
-    - "ours": the legacy pipeline with our checks attached. Faults are caught.
+    - "ours": enforce only checks backed by *confirmed* guarantees (rejected/pending
+      findings do not run). If nothing is confirmed, this matches Checks OFF.
     """
     state = _state_or_503()
-    if not hasattr(state, "_scenarios"):
-        state._scenarios = default_scenarios(onset_batch=4)  # type: ignore
-
-    scenario = next((s for s in state._scenarios if s.name == name), None)  # type: ignore
+    scenarios = state.scenarios()
+    scenario = next((s for s in scenarios if s.name == name), None)
     if scenario is None:
         raise HTTPException(404, f"no such scenario: {name}")
     if system not in ("none", "ours"):
         raise HTTPException(400, f"invalid system: {system} (use 'none' or 'ours')")
 
-    legacy = state.legacy_module()
-    contract = state.contract()
-    baselines = state.baselines()
+    try:
+        legacy = state.legacy_module()
+        active = state.active_pipeline()
+        if active is None:
+            raise RuntimeError("No active pipeline")
+        base_contract = state.contract()
+        if system == "none":
+            contract = base_contract
+            checks_for = b0_no_checks()
+        else:
+            contract = contract_for_decisions(
+                base_contract, active.findings(), active.decisions
+            )
+            if not contract.checkpoints:
+                checks_for = b0_no_checks()
+            elif contract_needs_baselines(contract):
+                checks_for = ours(contract, state.baselines())
+            else:
+                checks_for = ours(contract, BaselineStore())
+    except (RuntimeError, AttributeError, TypeError) as exc:
+        raise HTTPException(501, str(exc)) from exc
 
-    checks_for = b0_no_checks() if system == "none" else ours(contract, baselines)
     cfg = GenConfig(seed=777, n_batches=N_BATCHES, events_per_batch=EVENTS_PER_BATCH)
-    run = run_scenario(legacy, contract, checks_for, scenario, cfg)
+    run = run_scenario(
+        legacy,
+        contract,
+        checks_for,
+        scenario,
+        cfg,
+        stages=state.stages(),
+        generate_batches=generate_for_pipeline(active.id),
+    )
     score = score_scenario(run)
     alerts = [
         AlertOut(alert_id=a.alert_id, severity=a.severity, segment=a.segment,
@@ -246,21 +309,35 @@ def refresh_evaluation() -> list[EvaluationSummaryOut]:
 
 def _run_full_evaluation(state: AppState) -> list[EvaluationReport]:
     """Run full evaluation (B0, B1, ours) for the active pipeline."""
-    if not hasattr(state, "_scenarios"):
-        state._scenarios = default_scenarios(onset_batch=4)  # type: ignore
-
-    legacy = state.legacy_module()
-    contract = state.contract()
-    baselines = state.baselines()
-    scenarios = state._scenarios  # type: ignore
+    active = state.active_pipeline()
+    if active is None:
+        raise HTTPException(503, "No active pipeline")
+    try:
+        legacy = state.legacy_module()
+        contract = state.contract()
+        baselines = state.baselines()
+    except (RuntimeError, AttributeError, TypeError) as exc:
+        raise HTTPException(501, str(exc)) from exc
+    scenarios = state.scenarios()
+    stages = state.stages()
+    gen = generate_for_pipeline(active.id)
 
     return [
-        evaluate("B0", legacy, contract, b0_no_checks(), scenarios,
-                n_batches=N_BATCHES, events_per_batch=EVENTS_PER_BATCH),
-        evaluate("B1", legacy, contract, b1_naive_schema_only(), scenarios,
-                n_batches=N_BATCHES, events_per_batch=EVENTS_PER_BATCH),
-        evaluate("ours", legacy, contract, ours(contract, baselines),
-                scenarios, n_batches=N_BATCHES, events_per_batch=EVENTS_PER_BATCH),
+        evaluate(
+            "B0", legacy, contract, b0_no_checks(), scenarios,
+            n_batches=N_BATCHES, events_per_batch=EVENTS_PER_BATCH,
+            stages=stages, generate_batches=gen,
+        ),
+        evaluate(
+            "B1", legacy, contract, b1_naive_schema_only(), scenarios,
+            n_batches=N_BATCHES, events_per_batch=EVENTS_PER_BATCH,
+            stages=stages, generate_batches=gen,
+        ),
+        evaluate(
+            "ours", legacy, contract, ours(contract, baselines), scenarios,
+            n_batches=N_BATCHES, events_per_batch=EVENTS_PER_BATCH,
+            stages=stages, generate_batches=gen,
+        ),
     ]
 
 

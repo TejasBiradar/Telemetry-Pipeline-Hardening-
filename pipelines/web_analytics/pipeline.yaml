@@ -1,0 +1,5 @@
+name: Web Analytics
+description: Event ingest → clean → enrich → aggregate (pandas demo pipeline)
+entry: run.run
+adapter: python_pandas
+default: true
