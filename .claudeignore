@@ -1,0 +1,46 @@
+# Secrets and local env (CLAUDE.md rule 2)
+.env
+.env.*
+!.env.example
+**/*credentials*
+**/*secret*
+**/*.pem
+**/*.key
+
+# Sealed evaluation ground truth — never read (CLAUDE.md rule 2)
+pipelines/*/answer_key/
+**/answer_key/
+
+# Local / generated runtime data
+data/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+dist/
+build/
+*.egg-info/
+
+# Dependencies and virtualenvs
+.venv/
+venv/
+node_modules/
+ui/node_modules/
+ui/dist/
+
+# VCS and editor noise
+.git/
+.idea/
+.vscode/
+*.swp
+*~
+
+# Large or non-source artifacts
+**/*.parquet
+**/*.pkl
+**/*.pickle
+**/tap/
