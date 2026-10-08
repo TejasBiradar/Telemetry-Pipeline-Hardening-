@@ -45,6 +45,28 @@ export const api = {
   evaluation: () => request<EvaluationSummary[]>("/evaluation"),
   refreshEvaluation: () =>
     request<EvaluationSummary[]>("/evaluation/refresh", { method: "POST" }),
+  getOnboard: () =>
+    request<{
+      email: string
+      pipeline_id: string
+      source_note: string
+      smtp_configured: boolean
+      email_sent?: string | null
+      email_error?: string | null
+    }>("/onboard"),
+  saveOnboard: (body: { email: string; pipeline_id: string; source_note: string }) =>
+    request<{
+      email: string
+      pipeline_id: string
+      source_note: string
+      smtp_configured: boolean
+      email_sent?: string | null
+      email_error?: string | null
+    }>("/onboard", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
 }
 
 export { ApiError }

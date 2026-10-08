@@ -3,6 +3,7 @@ import { useGraph, useScenarios, useRunScenario } from "../api/hooks"
 import { ErrorCard, LoadingCard } from "../components/QueryState"
 import { StatusPill } from "../components/StatusPill"
 import { PipelineSelector } from "../components/PipelineSelector"
+import { EmailAlertButton } from "../components/EmailAlertButton"
 import type { ScenarioResult } from "../api/types"
 
 export function Overview() {
@@ -309,6 +310,7 @@ export function Overview() {
                         <> · Affects: <span className="mono">{alert.affected_outputs.join(", ")}</span></>
                       )}
                     </div>
+                    <EmailAlertButton alert={alert} />
                   </div>
                 ))}
               </div>

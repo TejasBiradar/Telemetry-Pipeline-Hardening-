@@ -194,6 +194,44 @@ select {
   align-items: center;
   gap: 12px;
 }
+
+.account-menu {
+  position: relative;
+}
+
+.account-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.account-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.account-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(360px, calc(100vw - 32px));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(20, 32, 28, 0.12);
+  z-index: 20;
+}
+
+.account-panel {
+  padding: 14px 16px 16px;
+}
 .topbar-pipeline {
   font-family: var(--font-mono);
   font-size: 12px;

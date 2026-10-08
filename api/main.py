@@ -11,6 +11,7 @@ cached baseline store — that's the endpoint a live demo button should call.
 from __future__ import annotations
 
 import json
+import smtplib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -26,6 +27,8 @@ from api.schemas import (
     GuaranteeDecisionIn,
     GuaranteeOut,
     LineageStepOut,
+    OnboardIn,
+    OnboardOut,
     ScenarioInfo,
     ScenarioResultOut,
 )
@@ -40,6 +43,8 @@ from teleguard.drift.baseline import BaselineStore
 from teleguard.evaluate.comparison_systems import b0_no_checks, b1_naive_schema_only, ours
 from teleguard.evaluate.engine import EvaluationReport, evaluate, run_scenario, score_scenario
 from teleguard.models import CheckResult, Status
+from teleguard.notify.email import alert_email_body, send_mail, smtp_configured
+from teleguard.notify.onboard import OnboardRecord, load_onboard, save_onboard
 
 N_BATCHES = 10
 EVENTS_PER_BATCH = 3000
@@ -73,6 +78,68 @@ def _state_or_503() -> AppState:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok" if _state is not None else "starting"}
+
+
+@app.get("/onboard", response_model=OnboardOut)
+def get_onboard() -> OnboardOut:
+    record = load_onboard()
+    if record is None:
+        active = _state_or_503().active_pipeline()
+        return OnboardOut(
+            email="",
+            pipeline_id=active.id if active else "",
+            source_note="",
+            smtp_configured=smtp_configured(),
+        )
+    return OnboardOut(
+        email=record.email,
+        pipeline_id=record.pipeline_id,
+        source_note=record.source_note,
+        smtp_configured=smtp_configured(),
+    )
+
+
+@app.post("/onboard", response_model=OnboardOut)
+def post_onboard(body: OnboardIn) -> OnboardOut:
+    state = _state_or_503()
+    if body.pipeline_id not in state.registry.pipelines:
+        raise HTTPException(404, f"unknown pipeline: {body.pipeline_id}")
+    try:
+        save_onboard(
+            OnboardRecord(
+                email=body.email.strip(),
+                pipeline_id=body.pipeline_id,
+                source_note=body.source_note.strip(),
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    sent: str | None = None
+    err: str | None = None
+    if smtp_configured():
+        try:
+            send_mail(
+                body.email.strip(),
+                f"[Driftline] onboarded {body.pipeline_id}",
+                (
+                    f"You are registered for alerts on pipeline '{body.pipeline_id}'.\n"
+                    f"Source note: {body.source_note or '(none)'}\n\n"
+                    "When a fault scenario raises alerts, they are emailed here.\n"
+                ),
+            )
+            sent = "welcome"
+        except (OSError, smtplib.SMTPException, RuntimeError, TimeoutError) as exc:
+            err = f"{type(exc).__name__}: {exc}"
+    record = load_onboard()
+    assert record is not None
+    return OnboardOut(
+        email=record.email,
+        pipeline_id=record.pipeline_id,
+        source_note=record.source_note,
+        smtp_configured=smtp_configured(),
+        email_sent=sent,
+        email_error=err,
+    )
 
 
 @app.get("/pipelines")
@@ -261,13 +328,39 @@ def run_one_scenario(name: str, system: str = "ours") -> ScenarioResultOut:
     ]
     batches = [_summarise_batch(i, results, i in run.blocked_batches)
                for i, results in enumerate(run.results_by_batch, start=1)]
-    return ScenarioResultOut(
+    out = ScenarioResultOut(
         scenario=name, fault_type=score.fault_type.value, detected=score.detected,
         lag_batches=score.lag_batches, crashed_at_batch=score.crashed_at_batch,
         true_positive_alerts=score.true_positive_alerts,
         false_positive_alerts=score.false_positive_alerts,
         onset_batch=run.injection.onset_batch, alerts=alerts, batches=batches,
     )
+    _maybe_email_alerts(active.id, name, alerts)
+    return out
+
+
+def _maybe_email_alerts(pipeline_id: str, scenario: str, alerts: list[AlertOut]) -> None:
+    """Email onboarded address when this pipeline raises alerts (demo notify path)."""
+    if not alerts or not smtp_configured():
+        return
+    record = load_onboard()
+    if record is None or record.pipeline_id != pipeline_id:
+        return
+    body = alert_email_body(
+        pipeline_id=pipeline_id,
+        scenario=scenario,
+        ui_url="http://localhost:5173/scenarios",
+        alerts=[a.model_dump() for a in alerts],
+    )
+    try:
+        send_mail(
+            record.email,
+            f"[Driftline] {len(alerts)} alert(s) on {pipeline_id} / {scenario}",
+            body,
+        )
+    except (OSError, smtplib.SMTPException, RuntimeError, TimeoutError):
+        # Demo must not fail the scenario run if mail is down.
+        return
 
 
 def _summarise_batch(batch: int, results: list[CheckResult], blocked: bool) -> BatchSummaryOut:

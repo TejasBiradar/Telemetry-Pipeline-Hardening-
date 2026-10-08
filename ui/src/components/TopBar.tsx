@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useHealth, useGuarantees } from "../api/hooks"
 import { StatusPill } from "./StatusPill"
+import { OnboardPanel } from "./OnboardPanel"
 
 interface PipelineInfo {
   active: string
@@ -14,6 +15,8 @@ export function TopBar({ title }: { title: string }) {
   const confirmedCount = guarantees.data?.filter((g) => g.status === "confirmed").length ?? 0
 
   const [pipelineInfo, setPipelineInfo] = useState<PipelineInfo | null>(null)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetch("/api/pipelines")
@@ -21,6 +24,17 @@ export function TopBar({ title }: { title: string }) {
       .then(setPipelineInfo)
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!accountOpen) return
+    function onPointerDown(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setAccountOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown)
+    return () => document.removeEventListener("mousedown", onPointerDown)
+  }, [accountOpen])
 
   const activePipelineName =
     pipelineInfo?.pipelines.find((p) => p.id === pipelineInfo.active)?.name ?? "…"
@@ -41,6 +55,31 @@ export function TopBar({ title }: { title: string }) {
           tone={connected ? "success" : "critical"}
           label={connected ? "API connected" : health.isLoading ? "Connecting…" : "API unreachable"}
         />
+        <div className="account-menu" ref={menuRef}>
+          <button
+            type="button"
+            className="account-btn"
+            aria-label="Account and onboard"
+            aria-expanded={accountOpen}
+            onClick={() => setAccountOpen((open) => !open)}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <circle cx="12" cy="8" r="3.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+              <path
+                d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+          {accountOpen && (
+            <div className="account-dropdown" role="dialog" aria-label="Onboard">
+              <OnboardPanel />
+            </div>
+          )}
+        </div>
       </div>
     </header>
   )

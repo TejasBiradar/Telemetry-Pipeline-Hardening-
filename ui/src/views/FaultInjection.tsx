@@ -6,6 +6,7 @@ import { StatusPill } from "../components/StatusPill"
 import { affectedOutputLabels, buildLineage } from "../lib/lineage"
 import type { Lineage } from "../lib/lineage"
 import type { AlertOut, ScenarioResult } from "../api/types"
+import { EmailAlertButton } from "../components/EmailAlertButton"
 
 export function FaultInjection() {
   const scenarios = useScenarios()
@@ -113,6 +114,7 @@ export function FaultInjection() {
                           </div>
                           <p style={{ fontSize: 12.5, marginTop: 6 }}>{alert.message}</p>
                           <AlertContext alert={alert} outputs={impactedOutputs(alert, lineage)} />
+                          <EmailAlertButton alert={alert} />
                         </div>
                       ))}
                     </div>

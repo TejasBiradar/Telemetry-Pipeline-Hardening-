@@ -5,7 +5,6 @@ const NAV = [
   { to: "/", label: "Overview", section: "Monitor", exact: true },
   { to: "/graph", label: "Code Graph", section: "Comprehension" },
   { to: "/guarantees", label: "Guarantees", section: "Comprehension" },
-  { to: "/scenarios", label: "Fault Injection", section: "Evaluation" },
   { to: "/evaluation", label: "Evaluation Report", section: "Evaluation" },
 ]
 

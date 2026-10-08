@@ -73,3 +73,18 @@ class GuaranteeOut(BaseModel):
 
 class GuaranteeDecisionIn(BaseModel):
     status: str  # "confirmed", "rejected"
+
+
+class OnboardIn(BaseModel):
+    email: str
+    pipeline_id: str
+    source_note: str = ""
+
+
+class OnboardOut(BaseModel):
+    email: str
+    pipeline_id: str
+    source_note: str = ""
+    smtp_configured: bool
+    email_sent: str | None = None
+    email_error: str | None = None
