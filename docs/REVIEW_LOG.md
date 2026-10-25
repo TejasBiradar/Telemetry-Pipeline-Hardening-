@@ -22,6 +22,30 @@ Every agent-generated change is logged here before it merges. The panel asks for
 
 | 9 | 2026-10-08 | A | Per-pipeline faults | Fault catalogues + datagen per pipeline (`scenarios_for_pipeline`, `datagen/payments.py`); stage-aware `run_batch`; per-pipeline baselines; Overview dropdown loads active pipeline scenarios + shows failing check names. | _pending (team)_ | — | B1 comparison still web-shaped (`duration_ms` schema). Confirm guarantees before Checks ON demos on new pipelines. | — |
 
+| 10 | 2026-10-19 | — | Code onboard v1 | `teleguard/onboard`: analyze client source in place, store metadata only under `data/onboarded/`, CLI `python -m teleguard.onboard`, API `POST/GET /pipelines/code-onboard`; reload onboarded pipelines on API startup. Email `/onboard` unchanged. Stages left pending for a later confirm step. | _pending (team)_ | — | — | — |
+
+| 11 | 2026-10-19 | — | Code onboard ids | Pipeline ids are server-generated UUID4 (client sends display name only). Git remote fetch not implemented; analyze still uses a local source path / checkout. | _pending (team)_ | — | — | — |
+
+| 12 | 2026-10-19 | — | Git remote onboard | `onboard_pipeline` accepts `git_url` (+ optional `git_ref`, `source_subdir`): shallow clone → analyze → delete tree; metadata keeps URL/ref only. Local `source_path` still supported. API/CLI updated. | _pending (team)_ | — | — | — |
+
+| 13 | 2026-10-19 | — | Confirm stages/guarantees | Persist `stage_status` + `guarantee_status`; APIs to confirm/reject; `confirmed_stages` / `agent_checkpoints` / `confirmed_guarantees` helpers for the future watcher. | _pending (team)_ | — | — | — |
+
+| 14 | 2026-10-19 | — | MinIO output store | One MinIO root per pipeline; fixed layout `{prefix}/{stage}/`; `PUT .../output-store`; agent checkpoints gain `output_uri`. Secrets via env var names only. | _pending (team)_ | — | — | — |
+
+| 15 | 2026-10-19 | — | Agent + Docker demo | Watcher agent (MinIO poll → guarantee checks → results); API GET/POST agent results; Dockerfile + compose (api/minio/agent/bootstrap); `docker/DEMO.md`. | _pending (team)_ | — | — | — |
+
+| 16 | 2026-10-25 | — | Client flow UI | `/clients` tabbed page: register source, confirm stages and guarantees, set MinIO root, poll agent results. API list + finding details on code-onboard responses. | _pending (team)_ | — | — | — |
+
+| 17 | 2026-10-25 | — | Three containers | Compose is minio, pipeline (trigger + run status), and detection (API + agent + platform UI). Pipeline writes `{prefix}/{stage}/`. | _pending (team)_ | — | — | — |
+
+| 18 | 2026-10-25 | — | MinIO image | Compose pulled `minio/minio` from Docker Hub and failed with pull access denied. Image is now `quay.io/minio/minio`; healthcheck uses `mc ready local` because that image has no curl. | _pending (team)_ | — | — | — |
+
+| 19 | 2026-10-25 | — | Split demo faults | Driftline UI is only the client platform (register, stages, guarantees, MinIO, results). Fault catalogue moved to the pipeline trigger; the job status stays there. | _pending (team)_ | — | — | — |
+
+| 20 | 2026-10-25 | — | Sidebar pages | Source, Stages, Guarantees, MinIO, and Results are left-sidebar pages. The in-page tab strip is gone. The pipeline picker stays in the sidebar. | _pending (team)_ | — | — | — |
+
+| 21 | 2026-10-25 | — | Stage output locations | Each confirmed stage has its own location: a MinIO folder, file, or glob, or a database table. The connection string stays in an env var. The old shared `{prefix}/{stage}/` layout still loads. | _pending (team)_ | — | — | — |
+
 ## Categories to track
 - **Confidently wrong**: the agent stated something about the legacy code that the evidence didn't support
 - **Scope creep**: changed files outside the task (especially `legacy/`)

@@ -1,21 +1,67 @@
+# Three containers:
+#   minio      — stage files from pipeline runs
+#   pipeline   — trigger button and run success/failure
+#   detection  — Driftline API, agent, and platform UI
+#
+#   docker compose up --build
+#
 services:
-  db:
-    image: postgres:16
-    env_file: .env
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-teleguard}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teleguard}
-      POSTGRES_DB: ${POSTGRES_DB:-teleguard}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "5432:5432"
+      - "9000:9000"
+      - "9001:9001"
     volumes:
-      - teleguard_db:/var/lib/postgresql/data
-      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+      - minio_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teleguard}"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  pipeline:
+    build:
+      context: .
+      dockerfile: pipeline_demo/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: demo
+      MINIO_PREFIX: demo/user_behavior/outputs
+      MINIO_SECURE: "false"
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  detection:
+    build:
+      context: .
+      dockerfile: Dockerfile.detection
+    ports:
+      - "8080:80"
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - onboard_data:/app/data
+      - ./pipelines:/app/pipelines:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+
 volumes:
-  teleguard_db:
+  minio_data:
+  onboard_data:

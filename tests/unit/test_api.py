@@ -146,3 +146,60 @@ def test_invalid_decision_status_is_400(client: TestClient) -> None:
     guarantees = client.get("/pipeline/guarantees").json()
     response = client.post(f"/pipeline/guarantees/{guarantees[0]['id']}/decision", json={"status": "invalid"})
     assert response.status_code == 400
+
+
+def test_code_onboard_analyzes_source_and_registers(client: TestClient) -> None:
+    from pathlib import Path
+    from uuid import UUID
+
+    src = Path(__file__).resolve().parents[2] / "pipelines" / "user_behavior" / "src"
+    response = client.post(
+        "/pipelines/code-onboard",
+        json={
+            "name": "Client UB API",
+            "source_path": str(src),
+            "entry": "run.run",
+            "select": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    pid = body["pipeline_id"]
+    assert UUID(pid)
+    assert body["stages"] == ["ingest", "filter_sessions", "aggregate"]
+    assert body["findings_count"] > 0
+    assert all(v == "pending" for v in body["stage_status"].values())
+
+    listed = client.get("/pipelines").json()
+    ids = {p["id"] for p in listed["pipelines"]}
+    assert pid in ids
+    assert listed["active"] == pid
+
+    got = client.get(f"/pipelines/{pid}/code-onboard")
+    assert got.status_code == 200
+    assert got.json()["stages"] == body["stages"]
+
+    # Confirm stages + one guarantee on the onboarded pipeline.
+    stage_resp = client.put(
+        f"/pipelines/{pid}/stages/decisions",
+        json={"decisions": {"ingest": "confirmed", "aggregate": "confirmed"}},
+    )
+    assert stage_resp.status_code == 200, stage_resp.text
+    assert stage_resp.json()["confirmed_stages"] == ["ingest", "aggregate"]
+    assert {c["stage"] for c in stage_resp.json()["agent_checkpoints"]} == {
+        "ingest",
+        "aggregate",
+    }
+
+    guarantees = client.get("/pipeline/guarantees").json()
+    assert guarantees
+    g_id = guarantees[0]["id"]
+    g_resp = client.put(
+        f"/pipelines/{pid}/guarantees/{g_id}/decision",
+        json={"status": "confirmed"},
+    )
+    assert g_resp.status_code == 200, g_resp.text
+    assert g_resp.json()["guarantee_status"][g_id] == "confirmed"
+
+    # Restore default so later/module-shared assumptions stay on web_analytics.
+    assert client.put("/pipelines/web_analytics/select").status_code == 200

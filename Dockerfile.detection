@@ -1,0 +1,32 @@
+FROM node:22-slim AS ui
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci
+COPY ui .
+RUN npm run build
+
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends nginx curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /etc/nginx/sites-enabled/default
+
+WORKDIR /app
+
+COPY requirements.txt pyproject.toml ./
+COPY teleguard teleguard
+COPY api api
+COPY datagen datagen
+COPY pipelines pipelines
+COPY db db
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/detection-entrypoint.sh /app/docker/detection-entrypoint.sh
+COPY --from=ui /ui/dist /usr/share/nginx/html
+
+RUN pip install --no-cache-dir -r requirements.txt -e . \
+    && chmod +x /app/docker/detection-entrypoint.sh
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 80
+
+CMD ["/app/docker/detection-entrypoint.sh"]

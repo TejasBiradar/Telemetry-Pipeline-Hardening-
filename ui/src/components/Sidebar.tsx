@@ -1,33 +1,34 @@
-import { useEffect, useState } from "react"
-import { NavLink } from "react-router-dom"
+import { NavLink, useLocation, useNavigate } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
+import { api } from "../api/client"
 
 const NAV = [
-  { to: "/", label: "Overview", section: "Monitor", exact: true },
-  { to: "/graph", label: "Code Graph", section: "Comprehension" },
-  { to: "/guarantees", label: "Guarantees", section: "Comprehension" },
-  { to: "/evaluation", label: "Evaluation Report", section: "Evaluation" },
+  { to: "/source", label: "Source" },
+  { to: "/stages", label: "Stages" },
+  { to: "/guarantees", label: "Guarantees" },
+  { to: "/outputs", label: "Outputs" },
+  { to: "/results", label: "Results" },
 ]
 
-function groupBySection() {
-  const sections = new Map<string, typeof NAV>()
-  for (const item of NAV) {
-    const list = sections.get(item.section) ?? []
-    list.push(item)
-    sections.set(item.section, list)
-  }
-  return sections
-}
-
 export function Sidebar() {
-  const sections = groupBySection()
-  const [activeId, setActiveId] = useState("")
+  const location = useLocation()
+  const navigate = useNavigate()
+  const list = useQuery({
+    queryKey: ["code-onboard-list"],
+    queryFn: api.listCodeOnboard,
+  })
+  const pipelineId = new URLSearchParams(location.search).get("id") ?? ""
 
-  useEffect(() => {
-    fetch("/api/pipelines")
-      .then((r) => r.json())
-      .then((data: { active?: string }) => setActiveId(data.active ?? ""))
-      .catch(() => setActiveId(""))
-  }, [])
+  function selectPipeline(id: string) {
+    const next = new URLSearchParams(location.search)
+    if (id) next.set("id", id)
+    else next.delete("id")
+    const search = next.toString()
+    navigate({
+      pathname: id ? location.pathname : "/source",
+      search: search ? `?${search}` : "",
+    })
+  }
 
   return (
     <aside className="sidebar">
@@ -45,25 +46,38 @@ export function Sidebar() {
         </div>
         <div>
           <div className="brand-name">Driftline</div>
-          <div className="brand-sub">{activeId || "telemetry guard"}</div>
+          <div className="brand-sub">detection</div>
         </div>
       </div>
 
-      {[...sections.entries()].map(([section, items]) => (
-        <div key={section}>
-          <div className="sidebar-section-label">{section}</div>
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.exact}
-              className={({ isActive }) => "sidebar-link" + (isActive ? " active" : "")}
-            >
-              {item.label}
-            </NavLink>
+      <label className="sidebar-picker" htmlFor="pipeline-picker">
+        Pipeline
+        <select
+          id="pipeline-picker"
+          className="flow-input"
+          value={pipelineId}
+          onChange={(event) => selectPipeline(event.target.value)}
+        >
+          <option value="">New registration</option>
+          {(list.data ?? []).map((item) => (
+            <option key={item.pipeline_id} value={item.pipeline_id}>
+              {item.name} · {item.pipeline_id.slice(0, 8)}
+            </option>
           ))}
-        </div>
-      ))}
+        </select>
+      </label>
+
+      <nav className="sidebar-nav" aria-label="Pipeline setup">
+        {NAV.map((item) => (
+          <NavLink
+            key={item.to}
+            to={{ pathname: item.to, search: location.search }}
+            className={({ isActive }) => "sidebar-link" + (isActive ? " active" : "")}
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
     </aside>
   )
 }

@@ -88,3 +88,116 @@ class OnboardOut(BaseModel):
     smtp_configured: bool
     email_sent: str | None = None
     email_error: str | None = None
+
+
+class CodeOnboardIn(BaseModel):
+    """Register client pipeline code: analyze local path or git URL.
+
+    Provide exactly one of ``source_path`` or ``git_url``.
+    ``pipeline_id`` is assigned by the server (UUID).
+    """
+
+    name: str
+    source_path: str | None = None
+    git_url: str | None = None
+    git_ref: str = "HEAD"
+    source_subdir: str = ""
+    entry: str = "run.run"
+    adapter: str | None = None
+    description: str = ""
+    select: bool = True
+
+
+class OnboardFindingOut(BaseModel):
+    id: str
+    kind: str
+    field: str | None = None
+    message: str
+    file: str = ""
+    line: int = 0
+
+
+class CodeOnboardSummaryOut(BaseModel):
+    pipeline_id: str
+    name: str
+    adapter: str
+    analyzed_at: str
+    findings_count: int
+    confirmed_stages: list[str]
+    has_output_store: bool
+
+
+class CodeOnboardOut(BaseModel):
+    pipeline_id: str
+    name: str
+    source_path: str
+    git_url: str = ""
+    git_ref: str = ""
+    source_subdir: str = ""
+    adapter: str
+    stages: list[str]
+    checkpoints: list[dict[str, str]]
+    findings: list[OnboardFindingOut] = []
+    findings_count: int
+    stage_status: dict[str, str]
+    guarantee_status: dict[str, str] = {}
+    confirmed_stages: list[str] = []
+    agent_checkpoints: list[dict[str, str]] = []
+    output_store: dict[str, object] | None = None
+    metadata_path: str
+    analyzed_at: str
+
+
+class DecisionIn(BaseModel):
+    status: str  # pending | confirmed | rejected
+
+
+class StageDecisionsIn(BaseModel):
+    decisions: dict[str, str]
+
+
+class StageLocationIn(BaseModel):
+    """Folder, object/glob, or database table for one stage."""
+
+    stage: str
+    location: str
+
+
+class MinioOutputStoreIn(BaseModel):
+    """MinIO or database destinations. Each stage carries its own location."""
+
+    kind: str = "minio"
+    endpoint: str = ""
+    bucket: str = ""
+    prefix: str = ""
+    secure: bool = False
+    access_key_env: str = "MINIO_ACCESS_KEY"
+    secret_key_env: str = "MINIO_SECRET_KEY"
+    dsn_env: str = "STAGE_DATABASE_URL"
+    db_layout: str = ""
+    stage_column: str = ""
+    stages: list[StageLocationIn] = []
+
+
+class AgentRunIn(BaseModel):
+    pipeline_id: str
+    stage: str
+    checkpoint: str
+    object_key: str
+    batch_id: str
+    observed_at: str
+    results: list[dict[str, object]]
+    failed: int
+    passed: int
+
+
+class AgentRunOut(BaseModel):
+    pipeline_id: str
+    stage: str
+    checkpoint: str
+    object_key: str
+    batch_id: str
+    observed_at: str
+    results: list[dict[str, object]]
+    failed: int
+    passed: int

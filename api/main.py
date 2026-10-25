@@ -21,20 +21,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from api.schemas import (
+    AgentRunIn,
+    AgentRunOut,
     AlertOut,
     BatchSummaryOut,
+    CodeOnboardIn,
+    CodeOnboardOut,
+    CodeOnboardSummaryOut,
+    DecisionIn,
     EvaluationSummaryOut,
     GuaranteeDecisionIn,
     GuaranteeOut,
     LineageStepOut,
+    MinioOutputStoreIn,
+    OnboardFindingOut,
     OnboardIn,
     OnboardOut,
     ScenarioInfo,
     ScenarioResultOut,
+    StageDecisionsIn,
 )
 from api.state import AppState, build_state
 from datagen.catalog import generate_for_pipeline
 from datagen.generate import GenConfig
+from teleguard.agent.results_store import AgentRun, append_run, latest_run, list_runs
 from teleguard.contracts.decisions_filter import (
     contract_for_decisions,
     contract_needs_baselines,
@@ -45,6 +55,23 @@ from teleguard.evaluate.engine import EvaluationReport, evaluate, run_scenario, 
 from teleguard.models import CheckResult, Status
 from teleguard.notify.email import alert_email_body, send_mail, smtp_configured
 from teleguard.notify.onboard import OnboardRecord, load_onboard, save_onboard
+from teleguard.onboard.code import (
+    DEFAULT_STORE,
+    CodeOnboardRecord,
+    agent_checkpoints,
+    confirmed_stages,
+    list_records,
+    load_record,
+    onboard_pipeline,
+    register_record,
+    save_record,
+    set_output_store,
+    set_stage_decision,
+    set_stage_decisions,
+)
+from teleguard.onboard.code import (
+    set_guarantee_decision as apply_guarantee_decision,
+)
 
 N_BATCHES = 10
 EVENTS_PER_BATCH = 3000
@@ -147,6 +174,240 @@ def list_pipelines() -> dict[str, object]:
     """List all available pipelines and the active one."""
     state = _state_or_503()
     return state.registry.to_json()
+
+
+def _finding_out(raw: dict[str, object]) -> OnboardFindingOut:
+    evidence = raw.get("evidence")
+    file_name = ""
+    line = 0
+    if isinstance(evidence, dict):
+        file_name = str(evidence.get("file", ""))
+        line_raw = evidence.get("line", 0)
+        line = int(line_raw) if isinstance(line_raw, int) else 0
+    field = raw.get("field")
+    return OnboardFindingOut(
+        id=str(raw.get("id", "")),
+        kind=str(raw.get("kind", "")),
+        field=None if field is None else str(field),
+        message=str(raw.get("message", "")),
+        file=file_name,
+        line=line,
+    )
+
+
+def _code_onboard_out(record: CodeOnboardRecord, metadata_path: str) -> CodeOnboardOut:
+    findings = [
+        _finding_out(item) for item in record.findings if isinstance(item, dict)
+    ]
+    return CodeOnboardOut(
+        pipeline_id=record.pipeline_id,
+        name=record.name,
+        source_path=record.source_path,
+        git_url=record.git_url,
+        git_ref=record.git_ref,
+        source_subdir=record.source_subdir,
+        adapter=record.adapter,
+        stages=record.stages,
+        checkpoints=record.checkpoints,
+        findings=findings,
+        findings_count=len(findings),
+        stage_status=record.stage_status,
+        guarantee_status=record.guarantee_status,
+        confirmed_stages=confirmed_stages(record),
+        agent_checkpoints=agent_checkpoints(record),
+        output_store=record.output_store,
+        metadata_path=metadata_path,
+        analyzed_at=record.analyzed_at,
+    )
+
+
+def _persist_onboard_record(state: AppState, record: CodeOnboardRecord) -> str:
+    meta_path = save_record(record, store_root=DEFAULT_STORE)
+    register_record(state.registry, record)
+    return str(meta_path)
+
+
+@app.get("/pipelines/code-onboard", response_model=list[CodeOnboardSummaryOut])
+def list_code_onboard() -> list[CodeOnboardSummaryOut]:
+    """List pipelines registered through code onboard (not built-in demos)."""
+    _state_or_503()
+    summaries: list[CodeOnboardSummaryOut] = []
+    for record in list_records(DEFAULT_STORE):
+        summaries.append(
+            CodeOnboardSummaryOut(
+                pipeline_id=record.pipeline_id,
+                name=record.name,
+                adapter=record.adapter,
+                analyzed_at=record.analyzed_at,
+                findings_count=len(record.findings),
+                confirmed_stages=confirmed_stages(record),
+                has_output_store=record.output_store is not None,
+            )
+        )
+    return summaries
+
+
+@app.post("/pipelines/code-onboard", response_model=CodeOnboardOut)
+def post_code_onboard(body: CodeOnboardIn) -> CodeOnboardOut:
+    """Analyze local path or git URL; store metadata only; register in memory.
+
+    Git remotes are shallow-cloned ephemerally — the tree is not kept. Stages
+    stay ``pending`` for a later confirm step.
+    """
+    state = _state_or_503()
+    try:
+        record = onboard_pipeline(
+            name=body.name,
+            entry=body.entry,
+            adapter=body.adapter,
+            description=body.description,
+            source_path=Path(body.source_path) if body.source_path else None,
+            git_url=body.git_url,
+            git_ref=body.git_ref,
+            source_subdir=body.source_subdir,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+    meta_path = save_record(record, store_root=DEFAULT_STORE)
+    register_record(state.registry, record)
+    if body.select:
+        state.registry.select(record.pipeline_id)
+
+    return _code_onboard_out(record, str(meta_path))
+
+
+@app.get("/pipelines/{pipeline_id}/code-onboard", response_model=CodeOnboardOut)
+def get_code_onboard(pipeline_id: str) -> CodeOnboardOut:
+    """Return stored code-onboard metadata for a pipeline."""
+    record = load_record(pipeline_id, store_root=DEFAULT_STORE)
+    if record is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    return _code_onboard_out(
+        record, str(DEFAULT_STORE / pipeline_id / "metadata.json")
+    )
+
+
+@app.put(
+    "/pipelines/{pipeline_id}/stages/{stage}/decision",
+    response_model=CodeOnboardOut,
+)
+def put_stage_decision(
+    pipeline_id: str, stage: str, body: DecisionIn
+) -> CodeOnboardOut:
+    """Confirm, reject, or reset one discovered stage."""
+    state = _state_or_503()
+    record = load_record(pipeline_id, store_root=DEFAULT_STORE)
+    if record is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    try:
+        updated = set_stage_decision(record, stage, body.status)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    path = _persist_onboard_record(state, updated)
+    return _code_onboard_out(updated, path)
+
+
+@app.put("/pipelines/{pipeline_id}/stages/decisions", response_model=CodeOnboardOut)
+def put_stage_decisions(pipeline_id: str, body: StageDecisionsIn) -> CodeOnboardOut:
+    """Bulk confirm/reject stages."""
+    state = _state_or_503()
+    record = load_record(pipeline_id, store_root=DEFAULT_STORE)
+    if record is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    try:
+        updated = set_stage_decisions(record, body.decisions)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    path = _persist_onboard_record(state, updated)
+    return _code_onboard_out(updated, path)
+
+
+@app.put(
+    "/pipelines/{pipeline_id}/guarantees/{guarantee_id}/decision",
+    response_model=CodeOnboardOut,
+)
+def put_onboard_guarantee_decision(
+    pipeline_id: str, guarantee_id: str, body: DecisionIn
+) -> CodeOnboardOut:
+    """Confirm, reject, or reset one onboarded guarantee (finding)."""
+    state = _state_or_503()
+    record = load_record(pipeline_id, store_root=DEFAULT_STORE)
+    if record is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    try:
+        updated = apply_guarantee_decision(record, guarantee_id, body.status)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    path = _persist_onboard_record(state, updated)
+    return _code_onboard_out(updated, path)
+
+
+@app.put("/pipelines/{pipeline_id}/output-store", response_model=CodeOnboardOut)
+def put_output_store(pipeline_id: str, body: MinioOutputStoreIn) -> CodeOnboardOut:
+    """Save where each confirmed stage writes: a MinIO path or a database table."""
+    state = _state_or_503()
+    record = load_record(pipeline_id, store_root=DEFAULT_STORE)
+    if record is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    try:
+        updated = set_output_store(record, body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    path = _persist_onboard_record(state, updated)
+    return _code_onboard_out(updated, path)
+
+
+@app.post("/pipelines/{pipeline_id}/agent/results", response_model=AgentRunOut)
+def post_agent_results(pipeline_id: str, body: AgentRunIn) -> AgentRunOut:
+    """Ingest one agent check run (or write via shared volume locally)."""
+    if body.pipeline_id != pipeline_id:
+        raise HTTPException(400, "pipeline_id mismatch")
+    if load_record(pipeline_id, store_root=DEFAULT_STORE) is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    run = AgentRun(
+        pipeline_id=body.pipeline_id,
+        stage=body.stage,
+        checkpoint=body.checkpoint,
+        object_key=body.object_key,
+        batch_id=body.batch_id,
+        observed_at=body.observed_at,
+        results=list(body.results),
+        failed=body.failed,
+        passed=body.passed,
+    )
+    append_run(run, store_root=DEFAULT_STORE)
+    return AgentRunOut(**run.to_json())
+
+
+@app.get("/pipelines/{pipeline_id}/agent/results", response_model=list[AgentRunOut])
+def get_agent_results(pipeline_id: str, limit: int = 50) -> list[AgentRunOut]:
+    """List recent agent runs (newest last)."""
+    if load_record(pipeline_id, store_root=DEFAULT_STORE) is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    runs = list_runs(pipeline_id, limit=max(1, min(limit, 500)), store_root=DEFAULT_STORE)
+    return [AgentRunOut(**r.to_json()) for r in runs]
+
+
+@app.get("/pipelines/{pipeline_id}/agent/results/latest", response_model=AgentRunOut)
+def get_agent_results_latest(pipeline_id: str) -> AgentRunOut:
+    """Return the most recent agent run, if any."""
+    if load_record(pipeline_id, store_root=DEFAULT_STORE) is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    run = latest_run(pipeline_id, store_root=DEFAULT_STORE)
+    if run is None:
+        raise HTTPException(404, "no agent runs yet")
+    return AgentRunOut(**run.to_json())
 
 
 @app.put("/pipelines/{pipeline_id}/select")

@@ -15,11 +15,13 @@ from teleguard.drift.baseline import BaselineStore
 from teleguard.evaluate.baselines import build_baseline_store
 from teleguard.evaluate.engine import EvaluationReport
 from teleguard.inject.scenarios import FaultScenario, scenarios_for_pipeline
+from teleguard.onboard.code import DEFAULT_STORE, load_onboarded_into_registry
 from teleguard.pipeline_loader import build_registry
 from teleguard.pipeline_registry import PipelineMetadata, PipelineRegistry
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PIPELINES_ROOT = REPO_ROOT / "pipelines"
+ONBOARD_STORE = DEFAULT_STORE
 
 
 @dataclass
@@ -86,6 +88,8 @@ def build_state(
     pipelines_root: Path = PIPELINES_ROOT,
     *,
     active_id: str | None = None,
+    onboard_store: Path = ONBOARD_STORE,
 ) -> AppState:
     registry = build_registry(pipelines_root, active_id=active_id)
+    load_onboarded_into_registry(registry, store_root=onboard_store)
     return AppState(registry=registry)

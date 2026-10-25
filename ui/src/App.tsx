@@ -1,18 +1,20 @@
-import { Route, Routes, useLocation } from "react-router-dom"
+import { Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { Sidebar } from "./components/Sidebar"
 import { TopBar } from "./components/TopBar"
-import { Overview } from "./views/Overview"
-import { CodeGraph } from "./views/CodeGraph"
-import { Guarantees } from "./views/Guarantees"
-import { FaultInjection } from "./views/FaultInjection"
-import { Evaluation } from "./views/Evaluation"
+import { ClientFlow } from "./views/ClientFlow"
 
 const TITLES: Record<string, string> = {
-  "/": "Pipeline Overview",
-  "/graph": "Code Graph Explorer",
-  "/guarantees": "Reconstructed Guarantees",
-  "/scenarios": "Fault Injection",
-  "/evaluation": "Evaluation Report",
+  "/source": "Source",
+  "/stages": "Stages",
+  "/guarantees": "Guarantees",
+  "/outputs": "Outputs",
+  "/minio": "Outputs",
+  "/results": "Results",
+}
+
+function KeepSearch({ pathname }: { pathname: string }) {
+  const location = useLocation()
+  return <Navigate to={{ pathname, search: location.search }} replace />
 }
 
 export function App() {
@@ -25,11 +27,14 @@ export function App() {
       <div className="content">
         <TopBar title={title} />
         <Routes>
-          <Route path="/" element={<Overview />} />
-          <Route path="/graph" element={<CodeGraph />} />
-          <Route path="/guarantees" element={<Guarantees />} />
-          <Route path="/scenarios" element={<FaultInjection />} />
-          <Route path="/evaluation" element={<Evaluation />} />
+          <Route path="/" element={<KeepSearch pathname="/source" />} />
+          <Route path="/clients" element={<KeepSearch pathname="/source" />} />
+          <Route path="/source" element={<ClientFlow />} />
+          <Route path="/stages" element={<ClientFlow />} />
+          <Route path="/guarantees" element={<ClientFlow />} />
+          <Route path="/outputs" element={<ClientFlow />} />
+          <Route path="/minio" element={<KeepSearch pathname="/outputs" />} />
+          <Route path="/results" element={<ClientFlow />} />
         </Routes>
       </div>
     </div>

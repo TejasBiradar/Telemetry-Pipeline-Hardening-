@@ -9,3 +9,5 @@ pyyaml>=6.0,<7        # loads pipelines/<name>/contracts.yaml (tested 6.0.3)
 psycopg[binary]>=3.1,<4  # PostgresSink; imported lazily, only needed when that sink is used (tested 3.2.4)
 fastapi>=0.110,<1     # the API layer over the code graph, guarantees, and evaluation results (tested 0.121.3)
 uvicorn>=0.29,<1       # ASGI server to run the API (tested 0.40.0)
+minio>=7.2,<8          # watcher agent lists/downloads stage dumps from MinIO (S3 API)
+pyarrow>=15,<22        # pandas read_parquet for agent batch files
