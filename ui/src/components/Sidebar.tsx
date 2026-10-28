@@ -44,24 +44,24 @@ export function Sidebar() {
             />
           </svg>
         </div>
-        <div>
+        <div className="sidebar-brand-text">
           <div className="brand-name">Driftline</div>
           <div className="brand-sub">detection</div>
         </div>
       </div>
 
       <label className="sidebar-picker" htmlFor="pipeline-picker">
-        Pipeline
+        <span className="sidebar-picker-label">Pipeline</span>
         <select
           id="pipeline-picker"
-          className="flow-input"
+          className="sidebar-select"
           value={pipelineId}
           onChange={(event) => selectPipeline(event.target.value)}
         >
           <option value="">New registration</option>
           {(list.data ?? []).map((item) => (
-            <option key={item.pipeline_id} value={item.pipeline_id}>
-              {item.name} · {item.pipeline_id.slice(0, 8)}
+            <option key={item.pipeline_id} value={item.pipeline_id} title={`${item.name} · ${item.pipeline_id}`}>
+              {item.name}
             </option>
           ))}
         </select>

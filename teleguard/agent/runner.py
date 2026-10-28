@@ -109,7 +109,11 @@ def process_once(
             try:
                 local = download_object(store, obj.key)
                 df = load_batch_file(local)
-                check_list = checks_from_guarantees(checkpoint, guarantees)
+                check_list = checks_from_guarantees(
+                    checkpoint,
+                    guarantees,
+                    columns=df.columns,
+                )
                 ctx = BatchContext(
                     pipeline=pipeline_id,
                     batch_id=obj.key,
@@ -176,7 +180,7 @@ def _process_table(
         return []
     ctx = BatchContext(pipeline=pipeline_id, batch_id=token, segment_column=None)
     results = []
-    for check in checks_from_guarantees(checkpoint, guarantees):
+    for check in checks_from_guarantees(checkpoint, guarantees, columns=frame.columns):
         results.extend(check.run(frame, ctx))
     failed = sum(1 for item in results if item.status is Status.FAIL)
     passed = sum(1 for item in results if item.status is Status.PASS)

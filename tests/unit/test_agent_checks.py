@@ -40,6 +40,42 @@ def test_checks_from_guarantees_schema_and_nulls() -> None:
     assert any(r.status is Status.FAIL and r.field == "user_id" for r in results)
 
 
+def test_checks_skip_fields_absent_from_stage_columns() -> None:
+    """Aggregate stages drop row-level fields; do not schema-fail them there."""
+    guarantees = [
+        {
+            "id": "required_field:user_id:a.py:1",
+            "kind": "required_field",
+            "field": "user_id",
+            "message": "required",
+        },
+        {
+            "id": "unit_conversion:amount_cents:a.py:2",
+            "kind": "unit_conversion",
+            "field": "amount_cents",
+            "message": "cents",
+        },
+    ]
+    reconcile_cols = ["transaction_date", "merchant_region", "unique_users"]
+    checks = checks_from_guarantees(
+        "after_reconcile",
+        guarantees,
+        columns=reconcile_cols,
+    )
+    names = {c.name for c in checks}
+    assert names == {"volume"}
+
+    early = checks_from_guarantees(
+        "after_clean",
+        guarantees,
+        columns=["user_id", "amount_cents", "status"],
+    )
+    early_names = {c.name for c in early}
+    assert "schema:user_id" in early_names
+    assert "null_rate:user_id" in early_names
+    assert "schema:amount_cents" in early_names
+
+
 def test_append_and_latest_run(tmp_path: Path) -> None:
     run = AgentRun(
         pipeline_id="11111111-1111-1111-1111-111111111111",

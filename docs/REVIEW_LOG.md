@@ -46,6 +46,10 @@ Every agent-generated change is logged here before it merges. The panel asks for
 
 | 21 | 2026-10-25 | — | Stage output locations | Each confirmed stage has its own location: a MinIO folder, file, or glob, or a database table. The connection string stays in an env var. The old shared `{prefix}/{stage}/` layout still loads. | _pending (team)_ | — | — | — |
 
+| 22 | 2026-10-28 | — | Multi-pipeline trigger | `:3000` pipeline dropdown for user_behavior / payment_processing / web_analytics; per-pipeline fault menus; writes under `demo/<pipeline>/outputs/{stage}/`. Dockerfile copies all three sources. | _pending (team)_ | — | — | — |
+
+| 23 | 2026-10-29 | — | Stage-aware agent checks | Agent field checks (schema/null) only run for columns present in that stage file, so aggregate outputs no longer false-fail on dropped fields like `user_id`. | _pending (team)_ | — | — | — |
+
 ## Categories to track
 - **Confidently wrong**: the agent stated something about the legacy code that the evidence didn't support
 - **Scope creep**: changed files outside the task (especially `legacy/`)

@@ -1,7 +1,7 @@
 """Demo faults for the pipeline trigger. Detection does not live here.
 
-These match the user-behavior catalogue: one run is one batch, so the fault
-applies to that whole run for the client version it names.
+Each pipeline has its own catalogue. One run is one batch, so the chosen fault
+applies to that whole run.
 """
 
 from __future__ import annotations
@@ -18,58 +18,152 @@ class DemoFault:
     detail: str
 
 
-FAULTS: tuple[DemoFault, ...] = (
-    DemoFault("clean", "Clean data", "No fault. Negative control."),
+USER_BEHAVIOR_FAULTS: tuple[DemoFault, ...] = (
+    DemoFault("clean", "Clean sessions", "No fault. Negative control for session engagement."),
     DemoFault(
         "unit_change_android",
-        "Unit change (Android 5.2.0)",
-        "duration_ms is already in seconds, so the pipeline's conversion collapses it.",
+        "Session duration unit slip (Android 5.2.0)",
+        "duration_ms is already in seconds, so filter_sessions' /1000 collapses session length.",
     ),
     DemoFault(
         "new_nullable_web",
-        "New nullable (web 1.5.2)",
+        "Null session user_id (web 1.5.2)",
         "Some user ids arrive null. The job still finishes; filter_sessions drops those rows.",
     ),
     DemoFault(
         "type_change_android",
-        "Type change (Android 5.1.3)",
-        "duration_ms arrives as text. The job fails when it tries to treat that as a number.",
+        "Session duration as text (Android 5.1.3)",
+        "duration_ms arrives as text. The job fails when filter_sessions treats it as a number.",
     ),
     DemoFault(
         "action_flood_ios",
-        "Volume drop (iOS 6.1.0)",
-        "Most iOS 6.1.0 events are missing. The job still finishes with a thinner batch.",
+        "Fewer iOS sessions (6.1.0)",
+        "Most iOS 6.1.0 events are missing. Aggregate still finishes on a thinner session set.",
     ),
     DemoFault(
         "feed_stops_ios",
-        "Feed stops (iOS 6.0.1)",
-        "iOS 6.0.1 sends nothing. Other versions still run.",
+        "iOS session feed stops (6.0.1)",
+        "iOS 6.0.1 sends nothing. Other client versions still produce sessions.",
     ),
 )
 
+PAYMENT_FAULTS: tuple[DemoFault, ...] = (
+    DemoFault("clean", "Clean data", "No fault. Negative control."),
+    DemoFault(
+        "new_nullable_user",
+        "New nullable user_id",
+        "Some user ids arrive null. The job still finishes; clean drops those rows.",
+    ),
+    DemoFault(
+        "amount_already_usd",
+        "Unit change (amount)",
+        "amount_cents is already in dollars, so /100 collapses the value.",
+    ),
+    DemoFault(
+        "type_change_amount",
+        "Type change (amount_cents)",
+        "amount_cents arrives as text. The job fails on numeric compare or convert.",
+    ),
+    DemoFault(
+        "bad_status",
+        "Unknown status values",
+        "Some rows use status values outside the allowed set; clean drops them.",
+    ),
+    DemoFault(
+        "volume_drop_us",
+        "Volume drop (MER_US)",
+        "Most North America merchant payments are missing. The job still finishes thinner.",
+    ),
+)
+
+WEB_ANALYTICS_FAULTS: tuple[DemoFault, ...] = (
+    DemoFault("clean", "Baseline page-view batch", "No fault. Control run for the web analytics funnel."),
+    DemoFault(
+        "duration_already_seconds",
+        "Page duration already in seconds",
+        "Android 5.2.0 sends duration_ms pre-scaled; clean's /1000 collapses page times.",
+    ),
+    DemoFault(
+        "anonymous_web_hits",
+        "Anonymous page hits (null user_id)",
+        "Web 1.5.2 omits user_id on some hits. Job finishes; clean drops them before enrich.",
+    ),
+    DemoFault(
+        "duration_sent_as_text",
+        "Page duration arrives as text",
+        "Android 5.1.3 sends duration_ms like '1200ms'. clean fails on numeric convert.",
+    ),
+    DemoFault(
+        "thin_ios_page_views",
+        "Thin iOS page-view traffic",
+        "Most iOS 6.1.0 hits are missing. Daily metrics still roll up on a thinner funnel.",
+    ),
+    DemoFault(
+        "ios_channel_offline",
+        "iOS channel goes offline",
+        "iOS 6.0.1 sends nothing this batch. Other platforms still appear in daily metrics.",
+    ),
+)
+
+# Web analytics menu ids map onto the shared telemetry injectors.
+_WEB_FAULT_ALIASES: dict[str, str] = {
+    "duration_already_seconds": "unit_change_android",
+    "anonymous_web_hits": "new_nullable_web",
+    "duration_sent_as_text": "type_change_android",
+    "thin_ios_page_views": "action_flood_ios",
+    "ios_channel_offline": "feed_stops_ios",
+}
+
+_FAULTS_BY_PIPELINE: dict[str, tuple[DemoFault, ...]] = {
+    "user_behavior": USER_BEHAVIOR_FAULTS,
+    "payment_processing": PAYMENT_FAULTS,
+    "web_analytics": WEB_ANALYTICS_FAULTS,
+}
+
 VERSIONS: tuple[str, ...] = ("1.2.0", "5.2.0", "1.5.2", "5.1.3", "6.1.0", "6.0.1")
 
+# Kept for older imports / tests that call list_faults() without a pipeline.
+FAULTS: tuple[DemoFault, ...] = USER_BEHAVIOR_FAULTS
 
-def list_faults() -> list[DemoFault]:
-    return list(FAULTS)
+
+def list_faults(pipeline_id: str = "user_behavior") -> list[DemoFault]:
+    if pipeline_id not in _FAULTS_BY_PIPELINE:
+        known = ", ".join(_FAULTS_BY_PIPELINE)
+        raise ValueError(f"unknown pipeline {pipeline_id!r}; expected one of: {known}")
+    return list(_FAULTS_BY_PIPELINE[pipeline_id])
 
 
-def fault_by_id(fault_id: str) -> DemoFault:
-    for fault in FAULTS:
+def fault_by_id(fault_id: str, pipeline_id: str = "user_behavior") -> DemoFault:
+    for fault in list_faults(pipeline_id):
         if fault.fault_id == fault_id:
             return fault
-    known = ", ".join(fault.fault_id for fault in FAULTS)
-    raise ValueError(f"unknown fault {fault_id!r}; expected one of: {known}")
+    known = ", ".join(fault.fault_id for fault in list_faults(pipeline_id))
+    raise ValueError(
+        f"unknown fault {fault_id!r} for pipeline {pipeline_id!r}; expected one of: {known}"
+    )
 
 
 def apply_fault(
     events: list[dict[str, object]],
     fault_id: str,
     *,
+    pipeline_id: str = "user_behavior",
     seed: int = 123,
 ) -> list[dict[str, object]]:
-    """Return a copy of ``events`` with ``fault_id`` applied. ``clean`` is a copy only."""
-    fault_by_id(fault_id)
+    """Return a copy of ``events`` with ``fault_id`` applied for ``pipeline_id``."""
+    fault_by_id(fault_id, pipeline_id)
+    if pipeline_id == "payment_processing":
+        return _apply_payment(events, fault_id, seed=seed)
+    resolved = _WEB_FAULT_ALIASES.get(fault_id, fault_id) if pipeline_id == "web_analytics" else fault_id
+    return _apply_telemetry(events, resolved, seed=seed)
+
+
+def _apply_telemetry(
+    events: list[dict[str, object]],
+    fault_id: str,
+    *,
+    seed: int,
+) -> list[dict[str, object]]:
     out = copy.deepcopy(events)
     if fault_id == "clean":
         return out
@@ -86,7 +180,50 @@ def apply_fault(
         return _drop_version(out, "6.1.0", random.Random(seed), 0.7)
     if fault_id == "feed_stops_ios":
         return [event for event in out if event.get("client_version") != "6.0.1"]
-    raise ValueError(f"unhandled fault {fault_id!r}")
+    raise ValueError(f"unhandled telemetry fault {fault_id!r}")
+
+
+def _apply_payment(
+    events: list[dict[str, object]],
+    fault_id: str,
+    *,
+    seed: int,
+) -> list[dict[str, object]]:
+    out = copy.deepcopy(events)
+    if fault_id == "clean":
+        return out
+    if fault_id == "new_nullable_user":
+        rng = random.Random(seed)
+        for event in out:
+            if rng.random() < 0.3:
+                event["user_id"] = None
+        return out
+    if fault_id == "amount_already_usd":
+        for event in out:
+            value = event.get("amount_cents")
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError("amount_cents must be numeric before a unit change")
+            event["amount_cents"] = float(value) / 100.0
+        return out
+    if fault_id == "type_change_amount":
+        for event in out:
+            event["amount_cents"] = f"{event.get('amount_cents')}c"
+        return out
+    if fault_id == "bad_status":
+        for i, event in enumerate(out):
+            if i % 5 == 0:
+                event["status"] = "authorized"
+        return out
+    if fault_id == "volume_drop_us":
+        rng = random.Random(seed)
+        kept: list[dict[str, object]] = []
+        for event in out:
+            mid = str(event.get("merchant_id", ""))
+            if mid.startswith("MER_US") and rng.random() < 0.7:
+                continue
+            kept.append(event)
+        return kept
+    raise ValueError(f"unhandled payment fault {fault_id!r}")
 
 
 def _payload(event: dict[str, object]) -> dict[str, object]:

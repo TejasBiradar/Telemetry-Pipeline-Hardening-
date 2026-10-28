@@ -34,8 +34,8 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: demo
-      MINIO_PREFIX: demo/user_behavior/outputs
       MINIO_SECURE: "false"
+      PIPELINE_SRC_ROOT: /app/pipeline_src
     depends_on:
       minio:
         condition: service_healthy

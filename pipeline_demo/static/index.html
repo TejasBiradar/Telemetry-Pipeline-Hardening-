@@ -47,8 +47,9 @@
       border: 1px solid var(--line);
       background: white;
     }
+    .field { margin-bottom: 14px; }
     button {
-      margin-top: 16px;
+      margin-top: 8px;
       background: var(--accent);
       color: white;
       border: 0;
@@ -70,10 +71,16 @@
 <body>
   <main>
     <h1>Pipeline run</h1>
-    <p>Start the client job with a chosen fault. This screen shows whether the job finished. Detection stays in Driftline.</p>
+    <p>Choose a reference pipeline and fault, then start the client job. This screen shows whether the job finished. Detection stays in Driftline.</p>
     <section class="card">
-      <label for="fault">Fault</label>
-      <select id="fault"></select>
+      <div class="field">
+        <label for="pipeline">Pipeline</label>
+        <select id="pipeline"></select>
+      </div>
+      <div class="field">
+        <label for="fault">Fault</label>
+        <select id="fault"></select>
+      </div>
       <p id="detail"></p>
       <div>
         <button id="trigger" type="button">Trigger pipeline run</button>
@@ -85,7 +92,7 @@
       <p id="layout" style="margin-top: 6px;"></p>
       <table>
         <thead>
-          <tr><th>When</th><th>Fault</th><th>Status</th><th>Files</th></tr>
+          <tr><th>When</th><th>Pipeline</th><th>Fault</th><th>Status</th><th>Files</th></tr>
         </thead>
         <tbody id="runs"></tbody>
       </table>
@@ -93,15 +100,21 @@
   </main>
   <script>
     const trigger = document.getElementById("trigger")
+    const pipeline = document.getElementById("pipeline")
     const fault = document.getElementById("fault")
     const detail = document.getElementById("detail")
     const message = document.getElementById("message")
     const runs = document.getElementById("runs")
     const layout = document.getElementById("layout")
     let catalogue = []
+    let pipelines = []
 
     function selectedFault() {
       return catalogue.find((item) => item.id === fault.value) || null
+    }
+
+    function selectedPipeline() {
+      return pipelines.find((item) => item.id === pipeline.value) || null
     }
 
     function paintDetail() {
@@ -110,13 +123,19 @@
     }
 
     function paint(data) {
-      layout.textContent = "Files land in s3://" + data.bucket + "/" + data.prefix + "/{stage}/"
+      const selected = selectedPipeline()
+      const prefix = selected ? selected.prefix : (data.prefix || "")
+      layout.textContent = prefix
+        ? "Files land in s3://" + data.bucket + "/" + prefix + "/{stage}/"
+        : "Files land in s3://" + data.bucket + "/demo/<pipeline>/outputs/{stage}/"
       runs.replaceChildren()
       const rows = data.runs || []
       for (const row of rows) {
         const tr = document.createElement("tr")
         const when = document.createElement("td")
         when.textContent = row.finished_at || "—"
+        const whichPipeline = document.createElement("td")
+        whichPipeline.textContent = row.pipeline_label || row.pipeline || "—"
         const which = document.createElement("td")
         which.textContent = row.fault_label || row.fault || "—"
         const status = document.createElement("td")
@@ -125,13 +144,13 @@
         const files = document.createElement("td")
         files.className = "mono"
         files.textContent = (row.stages || []).join("\n") || row.error || ""
-        tr.append(when, which, status, files)
+        tr.append(when, whichPipeline, which, status, files)
         runs.append(tr)
       }
       if (rows.length === 0) {
         const tr = document.createElement("tr")
         const td = document.createElement("td")
-        td.colSpan = 4
+        td.colSpan = 5
         td.textContent = "No runs yet."
         tr.append(td)
         runs.append(tr)
@@ -143,8 +162,21 @@
       paint(await response.json())
     }
 
+    async function loadPipelines() {
+      const response = await fetch("/pipelines")
+      const data = await response.json()
+      pipelines = data.pipelines || []
+      pipeline.replaceChildren()
+      for (const item of pipelines) {
+        const option = document.createElement("option")
+        option.value = item.id
+        option.textContent = item.label
+        pipeline.append(option)
+      }
+    }
+
     async function loadFaults() {
-      const response = await fetch("/faults")
+      const response = await fetch("/faults?pipeline=" + encodeURIComponent(pipeline.value))
       const data = await response.json()
       catalogue = data.faults || []
       fault.replaceChildren()
@@ -155,9 +187,15 @@
         fault.append(option)
       }
       paintDetail()
+      await refresh()
     }
 
     fault.addEventListener("change", paintDetail)
+    pipeline.addEventListener("change", () => {
+      loadFaults().catch((err) => {
+        message.textContent = String(err)
+      })
+    })
 
     trigger.addEventListener("click", async () => {
       trigger.disabled = true
@@ -166,7 +204,7 @@
         const response = await fetch("/run", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fault: fault.value }),
+          body: JSON.stringify({ pipeline: pipeline.value, fault: fault.value }),
         })
         if (!response.ok) {
           message.textContent = await response.text()
@@ -182,7 +220,7 @@
       }
     })
 
-    loadFaults().then(refresh)
+    loadPipelines().then(loadFaults).then(refresh)
     setInterval(refresh, 5000)
   </script>
 </body>
