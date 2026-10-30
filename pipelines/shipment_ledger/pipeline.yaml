@@ -1,0 +1,4 @@
+name: Shipment Ledger
+description: SQL stages. Each CREATE TABLE is one stage. No Python entry function.
+adapter: sql
+source_dir: sql

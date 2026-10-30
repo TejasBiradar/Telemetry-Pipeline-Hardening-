@@ -105,6 +105,35 @@ WEB_ANALYTICS_FAULTS: tuple[DemoFault, ...] = (
     ),
 )
 
+SHIPMENT_FAULTS: tuple[DemoFault, ...] = (
+    DemoFault("clean", "Clean shipments", "No fault. Negative control for the SQL ledger."),
+    DemoFault(
+        "weight_already_kg",
+        "Weight already in kilograms (air)",
+        "Air shipments send weight_g already in kilograms, so cleaned's /1000 collapses the weight.",
+    ),
+    DemoFault(
+        "null_shipment_id",
+        "Null shipment id",
+        "Some shipment ids arrive null. The job finishes; cleaned drops those rows.",
+    ),
+    DemoFault(
+        "weight_as_text",
+        "Weight arrives as text",
+        "weight_g arrives as text. The job fails when cleaned divides it.",
+    ),
+    DemoFault(
+        "thin_east_warehouse",
+        "Thin east-warehouse traffic",
+        "Most WH_EAST shipments are missing. Daily totals still roll up on a thinner set.",
+    ),
+    DemoFault(
+        "sea_carrier_offline",
+        "Sea carrier goes offline",
+        "Sea shipments are absent this batch. Other carriers still appear in the daily rollup.",
+    ),
+)
+
 # Web analytics menu ids map onto the shared telemetry injectors.
 _WEB_FAULT_ALIASES: dict[str, str] = {
     "duration_already_seconds": "unit_change_android",
@@ -117,6 +146,7 @@ _WEB_FAULT_ALIASES: dict[str, str] = {
 _FAULTS_BY_PIPELINE: dict[str, tuple[DemoFault, ...]] = {
     "user_behavior": USER_BEHAVIOR_FAULTS,
     "payment_processing": PAYMENT_FAULTS,
+    "shipment_ledger": SHIPMENT_FAULTS,
     "web_analytics": WEB_ANALYTICS_FAULTS,
 }
 
@@ -154,6 +184,8 @@ def apply_fault(
     fault_by_id(fault_id, pipeline_id)
     if pipeline_id == "payment_processing":
         return _apply_payment(events, fault_id, seed=seed)
+    if pipeline_id == "shipment_ledger":
+        return _apply_shipment(events, fault_id, seed=seed)
     resolved = _WEB_FAULT_ALIASES.get(fault_id, fault_id) if pipeline_id == "web_analytics" else fault_id
     return _apply_telemetry(events, resolved, seed=seed)
 
@@ -224,6 +256,47 @@ def _apply_payment(
             kept.append(event)
         return kept
     raise ValueError(f"unhandled payment fault {fault_id!r}")
+
+
+def _apply_shipment(
+    events: list[dict[str, object]],
+    fault_id: str,
+    *,
+    seed: int,
+) -> list[dict[str, object]]:
+    out = copy.deepcopy(events)
+    if fault_id == "clean":
+        return out
+    if fault_id == "weight_already_kg":
+        for event in out:
+            if event.get("carrier") != "air":
+                continue
+            value = event.get("weight_g")
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError("weight_g must be numeric before a unit change")
+            event["weight_g"] = float(value) / 1000.0
+        return out
+    if fault_id == "null_shipment_id":
+        rng = random.Random(seed)
+        for event in out:
+            if rng.random() < 0.3:
+                event["shipment_id"] = None
+        return out
+    if fault_id == "weight_as_text":
+        for event in out:
+            event["weight_g"] = f"{event.get('weight_g')}g"
+        return out
+    if fault_id == "thin_east_warehouse":
+        rng = random.Random(seed)
+        kept: list[dict[str, object]] = []
+        for event in out:
+            if event.get("warehouse") == "WH_EAST" and rng.random() < 0.7:
+                continue
+            kept.append(event)
+        return kept
+    if fault_id == "sea_carrier_offline":
+        return [event for event in out if event.get("carrier") != "sea"]
+    raise ValueError(f"unhandled shipment fault {fault_id!r}")
 
 
 def _payload(event: dict[str, object]) -> dict[str, object]:

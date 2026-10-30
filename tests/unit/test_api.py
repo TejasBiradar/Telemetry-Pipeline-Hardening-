@@ -26,7 +26,12 @@ def test_health_is_ok_once_started(client: TestClient) -> None:
 def test_lists_discovered_pipelines(client: TestClient) -> None:
     data = client.get("/pipelines").json()
     ids = {p["id"] for p in data["pipelines"]}
-    assert ids == {"web_analytics", "user_behavior", "payment_processing"}
+    assert {
+        "web_analytics",
+        "user_behavior",
+        "payment_processing",
+        "shipment_ledger",
+    } <= ids
     assert data["active"] == "web_analytics"
 
 
@@ -167,6 +172,8 @@ def test_code_onboard_analyzes_source_and_registers(client: TestClient) -> None:
     pid = body["pipeline_id"]
     assert UUID(pid)
     assert body["stages"] == ["ingest", "filter_sessions", "aggregate"]
+    stage_labels = [n["label"] for n in body["graph"]["nodes"] if n["type"] == "stage"]
+    assert stage_labels == ["ingest", "filter_sessions", "aggregate"]
     assert body["findings_count"] > 0
     assert all(v == "pending" for v in body["stage_status"].values())
 

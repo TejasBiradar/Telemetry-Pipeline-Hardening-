@@ -15,7 +15,12 @@ PIPELINES = ROOT / "pipelines"
 
 def test_discovers_all_real_pipelines() -> None:
     ids = {p.name for p in discover_pipeline_dirs(PIPELINES)}
-    assert ids == {"web_analytics", "user_behavior", "payment_processing"}
+    assert ids == {
+        "web_analytics",
+        "user_behavior",
+        "payment_processing",
+        "shipment_ledger",
+    }
 
 
 def test_each_pipeline_gets_a_non_empty_on_the_fly_graph() -> None:
@@ -37,6 +42,10 @@ def test_pipelines_have_distinct_stage_graphs() -> None:
     assert web.stages() == ["ingest", "clean", "enrich", "aggregate"]
     assert user.stages() == ["ingest", "filter_sessions", "aggregate"]
     assert pay.stages() == ["ingest", "clean", "enrich", "reconcile"]
+    shipment = registry.get("shipment_ledger")
+    assert shipment is not None
+    assert shipment.stages() == ["landed", "cleaned", "daily"]
+    assert shipment.adapter_name == "sql"
 
 
 def test_default_active_comes_from_pipeline_yaml() -> None:
@@ -44,20 +53,22 @@ def test_default_active_comes_from_pipeline_yaml() -> None:
     assert registry.active_pipeline_id == "web_analytics"
 
 
-def test_api_state_lists_three_pipelines_without_dummy_graphs() -> None:
+def test_api_state_lists_discovered_pipelines_without_dummy_graphs() -> None:
     state = build_state(PIPELINES)
-    listed = state.registry.to_json()
-    assert {p["id"] for p in listed["pipelines"]} == {
+    listed = {p["id"] for p in state.registry.to_json()["pipelines"]}
+    reference = (
         "web_analytics",
         "user_behavior",
         "payment_processing",
-    }
-    # Dummy registry entries reused web_analytics' module; real ones must not.
+        "shipment_ledger",
+    )
+    assert set(reference) <= listed
+    # Each reference pipeline keeps its own loaded module (SQL has none).
     modules = {
-        p.id: id(getattr(p, "_legacy_module", None))
-        for p in state.registry.list_all()
+        pipeline_id: id(getattr(state.registry.get(pipeline_id), "_legacy_module", None))
+        for pipeline_id in reference
     }
-    assert len(set(modules.values())) == 3
+    assert len(set(modules.values())) == len(reference)
 
 
 def test_load_pipeline_does_not_require_cached_graph_json(tmp_path: Path) -> None:

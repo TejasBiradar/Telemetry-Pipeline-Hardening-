@@ -24,7 +24,7 @@
       color: var(--text);
     }
     main {
-      max-width: 760px;
+      max-width: 960px;
       margin: 0 auto;
       padding: 40px 20px 64px;
     }
@@ -66,6 +66,9 @@
     .ok { color: var(--ok); font-weight: 700; }
     .bad { color: var(--bad); font-weight: 700; }
     .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+    .scroll { overflow-x: auto; }
+    #sample-table { font-size: 12px; }
+    #sample-table td, #sample-table th { white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -81,11 +84,19 @@
         <label for="fault">Fault</label>
         <select id="fault"></select>
       </div>
+      <p id="shape"></p>
       <p id="detail"></p>
       <div>
         <button id="trigger" type="button">Trigger pipeline run</button>
       </div>
       <p id="message" style="margin-top: 12px;" role="status"></p>
+    </section>
+    <section class="card">
+      <h2 style="margin: 0; font-size: 1rem;">Sample input</h2>
+      <p id="sample-note" style="margin-top: 6px;"></p>
+      <div class="scroll">
+        <table id="sample-table" aria-describedby="sample-note"></table>
+      </div>
     </section>
     <section class="card">
       <h2 style="margin: 0; font-size: 1rem;">Run status</h2>
@@ -103,9 +114,12 @@
     const pipeline = document.getElementById("pipeline")
     const fault = document.getElementById("fault")
     const detail = document.getElementById("detail")
+    const shape = document.getElementById("shape")
     const message = document.getElementById("message")
     const runs = document.getElementById("runs")
     const layout = document.getElementById("layout")
+    const sampleNote = document.getElementById("sample-note")
+    const sampleTable = document.getElementById("sample-table")
     let catalogue = []
     let pipelines = []
 
@@ -118,16 +132,67 @@
     }
 
     function paintDetail() {
+      const current = selectedPipeline()
+      shape.textContent = current ? current.shape : ""
       const item = selectedFault()
       detail.textContent = item ? item.detail : ""
     }
 
+    function paintSample(data, passed) {
+      const count = data.row_count || 0
+      const shown = data.shown || 0
+      const lead = passed
+        ? "Passed " + count + " rows into this run."
+        : "Trigger passes " + count + " rows."
+      sampleNote.textContent = shown < count
+        ? lead + " Showing the first " + shown + "."
+        : lead
+      const columns = data.columns || []
+      const rows = data.rows || []
+      sampleTable.replaceChildren()
+      if (columns.length === 0) return
+      const thead = document.createElement("thead")
+      const headRow = document.createElement("tr")
+      for (const column of columns) {
+        const th = document.createElement("th")
+        th.textContent = column
+        th.scope = "col"
+        headRow.append(th)
+      }
+      thead.append(headRow)
+      const tbody = document.createElement("tbody")
+      for (const row of rows) {
+        const tr = document.createElement("tr")
+        for (const column of columns) {
+          const td = document.createElement("td")
+          td.className = "mono"
+          const value = row[column]
+          td.textContent = value === null || value === undefined ? "" : String(value)
+          tr.append(td)
+        }
+        tbody.append(tr)
+      }
+      sampleTable.append(thead, tbody)
+    }
+
+    async function loadSample(passed) {
+      const response = await fetch(
+        "/sample?pipeline=" + encodeURIComponent(pipeline.value) +
+        "&fault=" + encodeURIComponent(fault.value),
+      )
+      if (!response.ok) {
+        sampleNote.textContent = await response.text()
+        sampleTable.replaceChildren()
+        return
+      }
+      paintSample(await response.json(), passed)
+    }
+
     function paint(data) {
       const selected = selectedPipeline()
-      const prefix = selected ? selected.prefix : (data.prefix || "")
-      layout.textContent = prefix
-        ? "Files land in s3://" + data.bucket + "/" + prefix + "/{stage}/"
-        : "Files land in s3://" + data.bucket + "/demo/<pipeline>/outputs/{stage}/"
+      layout.textContent = selected
+        ? selected.storage_label
+        : "Pick a pipeline to see where its stage outputs are stored."
       runs.replaceChildren()
       const rows = data.runs || []
       for (const row of rows) {
@@ -187,10 +252,16 @@
         fault.append(option)
       }
       paintDetail()
+      await loadSample(false)
       await refresh()
     }
 
-    fault.addEventListener("change", paintDetail)
+    fault.addEventListener("change", () => {
+      paintDetail()
+      loadSample(false).catch((err) => {
+        sampleNote.textContent = String(err)
+      })
+    })
     pipeline.addEventListener("change", () => {
       loadFaults().catch((err) => {
         message.textContent = String(err)
@@ -211,11 +282,15 @@
         } else {
           const body = await response.json()
           message.textContent = body.status === "succeeded" ? "Run finished." : "Run failed."
+          if (body.sample) paintSample(body.sample, true)
         }
       } catch (err) {
         message.textContent = String(err)
       } finally {
         trigger.disabled = false
+        if (!message.textContent.startsWith("Run finished")) {
+          await loadSample(false)
+        }
         await refresh()
       }
     })
