@@ -278,3 +278,17 @@ def test_shared_database_table_needs_one_table_and_a_column() -> None:
                 "stages": [{"stage": "ingest", "location": "pipeline_output"}],
             }
         )
+
+
+def test_output_store_accepts_kind_when_type_is_absent() -> None:
+    """The API body uses kind; saved records use type."""
+    store = MinioOutputStore.from_json(
+        {
+            "kind": "database",
+            "dsn_env": "STAGE_DATABASE_URL",
+            "db_layout": "per_table",
+            "stages": [{"stage": "ingest", "location": "ingest_events"}],
+        }
+    )
+    assert store.kind == "database"
+    assert store.to_json()["type"] == "database"

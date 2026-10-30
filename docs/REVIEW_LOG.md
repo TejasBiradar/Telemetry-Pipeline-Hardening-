@@ -50,6 +50,36 @@ Every agent-generated change is logged here before it merges. The panel asks for
 
 | 23 | 2026-10-29 | — | Stage-aware agent checks | Agent field checks (schema/null) only run for columns present in that stage file, so aggregate outputs no longer false-fail on dropped fields like `user_id`. | _pending (team)_ | — | — | — |
 
+| 24 | 2026-10-30 | — | Code graph page | Onboard API returns the stored code graph. Driftline sidebar **Code graph** draws the registered pipeline as a node-and-edge diagram: stages left to right, fields, and the lines that compute or write them. | _pending (team)_ | — | — | — |
+
+| 25 | 2026-10-30 | — | Config and DAG reader | A folder with `dag.yaml` or an Airflow `task_id` / `>>` file is analyzed as its own graph. Python entry points such as `run.run` still use the pandas adapter. The graph page shows the registered name and source. | _pending (team)_ | Removed. See entry 32. | — | — |
+
+| 26 | 2026-10-30 | — | Task DAG + config | A `tasks` DAG plus `*_config.yaml` resolves `config:` fields into stages, field links, and guarantees (filters, remaps, group keys, fills). The stage that nothing else depends on is watched at `output_base`. | _pending (team)_ | Removed. See entry 32. | — | — |
+
+| 27 | 2026-10-30 | — | Code graph layout | The graph page draws stage nodes and the task order only. Fields stay on the selected stage, so a wide config no longer stacks every column into one tall diagram. | _pending (team)_ | — | — | — |
+
+| 28 | 2026-10-30 | — | Credentials deck | Presentation `docs/driftline-client-credentials.pptx`. Client bucket role stays on the worker. Driftline holds a pipeline token and check results. Fallback is a one-time read grant that is not stored. | _pending (team)_ | — | — | — |
+
+| 29 | 2026-10-30 | — | Production data plane | ADR-0002 and architecture §8. Checker beside the writer is the default. A separate puller covers a scoped read grant or a one-time URL. File reads use the parquet footer plus per-row-group aggregates for confirmed columns. The Compose lab stays the demo. | _pending (team)_ | Superseded the same day by entry 30. | **Not built:** token issue, the aggregate reader, and the puller are specified, not implemented. The agent still loads the whole file. | — |
+
+| 30 | 2026-10-31 | — | Production architecture | Rewrote ADR-0002. The client sends a profile (counts and histograms). Driftline decides pass or fail. Collectors: task library, object-create function in their account, warehouse SQL, or a table manifest. A puller with a read grant is the exception. | _pending (team)_ | — | **Rejected the previous split:** a checker that posts only pass or fail cannot support a later threshold change or drift against a baseline. **Not built.** The lab agent still loads the whole file. | — |
+
+| 31 | 2026-10-31 | — | Client onboarding | ADR-0003. Onboarding cases only: client, one definition source, confirm stage and output location, collector mode, token. Pipeline stays inactive until those gates pass. Runtime is the next chapter. | _pending (team)_ | — | **Lab gap, left as is:** `POST /pipelines/code-onboard` has no client, no collector mode, and no token. The output-store form is not production onboarding. | — |
+
+| 32 | 2026-10-31 | — | Config and DAG reader | Removed the DAG adapter, the MDC config reader, their tests, the Source “Config and DAG” choice, and the Outputs prefill from `output_base`. Python and SQL analysis remain. The code graph page remains. | _pending (team)_ | Removed at user request | — | — |
+
+| 33 | 2026-10-31 | — | Registration form | Source registration and output location are one form. Output fields sit in a collapsed Advanced settings disclosure. `/outputs` and `/minio` redirect to Source. Saving a database store accepts the API `kind` field as well as stored `type`. | _pending (team)_ | — | Output save used to require confirmed stages on a separate page, so a new registration could not store a folder until later. The register submit now writes locations for the stages analysis returns. | — |
+
+| 34 | 2026-10-31 | — | Three pipeline shapes | User Behavior stays one Python file. Payment Processing is split across stage modules that share `rules.py`. Shipment Ledger is SQL (`CREATE TABLE` stages) with its own fault menu on the :3000 trigger. Web Analytics legacy is unchanged. | _pending (team)_ | — | **Not wired:** Driftline scenario runs still need a Python `ingest` module, so selecting Shipment Ledger in the detection UI and running a scenario has no executor. The trigger UI runs the SQL. | — |
+
+| 35 | 2026-10-31 | — | Per-pipeline output store | Trigger writes User Behavior as many files in one MinIO folder, Payment Processing and Web Analytics as one subfolder per stage, and Shipment Ledger as one table per stage. The trigger page shows the faulted input rows before and after Trigger. | _pending (team)_ | Changed the same day to Postgres. See entry 36. | First write used SQLite inside the pipeline container. Replaced because the detection agent reads Postgres. | — |
+
+| 36 | 2026-10-31 | — | Shipment Postgres | Shipment Ledger stage tables go to Postgres (`STAGE_DATABASE_URL`). Compose adds a `postgres` service on localhost:5432, database `teleguard`. | _pending (team)_ | — | — | — |
+
+| 37 | 2026-10-31 | — | Git remote clone | Detection image installs `git` and CA certificates so Source → Remote repository can shallow-clone an https URL. Nginx waits 150s for that request. Loading a pipeline file now includes sibling modules, so Payment Processing can start inside that image. | _pending (team)_ | — | The onboard code already cloned and discarded the tree. The running demo container had no `git` binary, so every remote URL failed before fetch. Rebuilding detection then failed to boot: `payment_processing/src/run.py` imports `clean` and the loader did not put that folder on the path. | — |
+
+| 38 | 2026-10-31 | — | Postgres runtime store | When `STAGE_DATABASE_URL` is set, registration, stages, guarantees, review decisions, notify contact, agent runs, and check alerts are written to Postgres (`db/migrations/002_runtime_store.sql`). Existing `data/onboarded` JSON is copied in once. A temporary directory in tests still uses files so CI has no database. | _pending (team)_ | — | The `pipelines` table in `001_schema_n_pipelines.sql` is not applied and does not match the UUID registration record, so the live tables are separate. | — |
+
 ## Categories to track
 - **Confidently wrong**: the agent stated something about the legacy code that the evidence didn't support
 - **Scope creep**: changed files outside the task (especially `legacy/`)

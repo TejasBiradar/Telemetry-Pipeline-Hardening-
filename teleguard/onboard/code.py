@@ -234,26 +234,42 @@ def onboard_pipeline(
     )
 
 
-def save_record(record: CodeOnboardRecord, store_root: Path = DEFAULT_STORE) -> Path:
-    """Persist metadata only under ``store_root/<pipeline_id>/metadata.json``."""
+def save_record(record: CodeOnboardRecord, store_root: Path = DEFAULT_STORE) -> str:
+    """Persist metadata in Postgres, or under ``store_root`` when no database is configured."""
+    if _use_database(store_root):
+        from teleguard.pg_store import import_legacy_files, save_registration
+
+        import_legacy_files(DEFAULT_STORE, _notify_path())
+        return save_registration(record.to_json())
     dest = store_root / record.pipeline_id
     dest.mkdir(parents=True, exist_ok=True)
     path = dest / "metadata.json"
     path.write_text(json.dumps(record.to_json(), indent=2) + "\n")
-    return path
+    return str(path)
 
 
 def load_record(pipeline_id: str, store_root: Path = DEFAULT_STORE) -> CodeOnboardRecord | None:
+    if _use_database(store_root):
+        from teleguard.pg_store import import_legacy_files, load_registration
+
+        import_legacy_files(DEFAULT_STORE, _notify_path())
+        raw = load_registration(pipeline_id)
+        return CodeOnboardRecord.from_json(raw) if raw is not None else None
     path = store_root / pipeline_id / "metadata.json"
     if not path.exists():
         return None
-    raw: object = json.loads(path.read_text())
-    if not isinstance(raw, dict):
+    raw_file: object = json.loads(path.read_text())
+    if not isinstance(raw_file, dict):
         raise TypeError(f"{path}: expected a JSON object")
-    return CodeOnboardRecord.from_json(raw)
+    return CodeOnboardRecord.from_json(raw_file)
 
 
 def list_records(store_root: Path = DEFAULT_STORE) -> list[CodeOnboardRecord]:
+    if _use_database(store_root):
+        from teleguard.pg_store import import_legacy_files, list_registrations
+
+        import_legacy_files(DEFAULT_STORE, _notify_path())
+        return [CodeOnboardRecord.from_json(item) for item in list_registrations()]
     if not store_root.is_dir():
         return []
     out: list[CodeOnboardRecord] = []
@@ -264,6 +280,18 @@ def list_records(store_root: Path = DEFAULT_STORE) -> list[CodeOnboardRecord]:
             if isinstance(raw, dict):
                 out.append(CodeOnboardRecord.from_json(raw))
     return out
+
+
+def _use_database(store_root: Path) -> bool:
+    from teleguard.pg_store import uses_database
+
+    return uses_database(store_root, DEFAULT_STORE)
+
+
+def _notify_path() -> Path:
+    from teleguard.notify.onboard import DEFAULT_PATH
+
+    return DEFAULT_PATH
 
 
 def analysis_from_record(record: CodeOnboardRecord) -> AnalysisResult:

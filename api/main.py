@@ -216,15 +216,24 @@ def _code_onboard_out(record: CodeOnboardRecord, metadata_path: str) -> CodeOnbo
         confirmed_stages=confirmed_stages(record),
         agent_checkpoints=agent_checkpoints(record),
         output_store=record.output_store,
+        graph=record.graph,
         metadata_path=metadata_path,
         analyzed_at=record.analyzed_at,
     )
 
 
+def _metadata_locator(pipeline_id: str) -> str:
+    from teleguard.pg_store import uses_database
+
+    if uses_database(DEFAULT_STORE, DEFAULT_STORE):
+        return f"db://registered_pipelines/{pipeline_id}"
+    return str(DEFAULT_STORE / pipeline_id / "metadata.json")
+
+
 def _persist_onboard_record(state: AppState, record: CodeOnboardRecord) -> str:
     meta_path = save_record(record, store_root=DEFAULT_STORE)
     register_record(state.registry, record)
-    return str(meta_path)
+    return meta_path
 
 
 @app.get("/pipelines/code-onboard", response_model=list[CodeOnboardSummaryOut])
@@ -287,9 +296,7 @@ def get_code_onboard(pipeline_id: str) -> CodeOnboardOut:
     record = load_record(pipeline_id, store_root=DEFAULT_STORE)
     if record is None:
         raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
-    return _code_onboard_out(
-        record, str(DEFAULT_STORE / pipeline_id / "metadata.json")
-    )
+    return _code_onboard_out(record, _metadata_locator(pipeline_id))
 
 
 @app.put(
@@ -478,9 +485,14 @@ def set_guarantee_decision(guarantee_id: str, decision: GuaranteeDecisionIn) -> 
 
 
 def _save_decisions(state: AppState) -> None:
-    """Save decisions to disk."""
+    """Save guarantee decisions in Postgres, or beside the pipeline when no database is set."""
     active = state.active_pipeline()
     if not active:
+        return
+    from teleguard.pg_store import database_url, save_review_decisions
+
+    if database_url():
+        save_review_decisions(active.id, active.decisions)
         return
     decisions_path = active.source_root / "review" / "decisions.json"
     decisions_path.parent.mkdir(parents=True, exist_ok=True)

@@ -56,6 +56,11 @@ class AgentRun:
 
 
 def append_run(run: AgentRun, store_root: Path = DEFAULT_STORE) -> None:
+    from teleguard.pg_store import append_agent_run, uses_database
+
+    if uses_database(store_root, DEFAULT_STORE):
+        append_agent_run(run.to_json())
+        return
     path = _runs_path(run.pipeline_id, store_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
@@ -68,6 +73,10 @@ def list_runs(
     limit: int = 50,
     store_root: Path = DEFAULT_STORE,
 ) -> list[AgentRun]:
+    from teleguard.pg_store import list_agent_runs, uses_database
+
+    if uses_database(store_root, DEFAULT_STORE):
+        return [AgentRun.from_json(item) for item in list_agent_runs(pipeline_id, limit=limit)]
     path = _runs_path(pipeline_id, store_root)
     if not path.exists():
         return []

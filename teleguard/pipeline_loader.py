@@ -45,12 +45,17 @@ def _read_meta(pipeline_dir: Path) -> dict[str, Any]:
 
 def _load_decisions(pipeline_dir: Path) -> dict[str, Any]:
     path = pipeline_dir / "review" / "decisions.json"
-    if not path.exists():
-        return {}
-    raw: object = json.loads(path.read_text())
-    if not isinstance(raw, dict):
-        raise TypeError(f"{path}: expected a JSON object")
-    return raw
+    decisions: dict[str, Any] = {}
+    if path.exists():
+        raw: object = json.loads(path.read_text())
+        if not isinstance(raw, dict):
+            raise TypeError(f"{path}: expected a JSON object")
+        decisions = raw
+    from teleguard.pg_store import database_url, load_review_decisions
+
+    if database_url():
+        decisions.update(load_review_decisions(pipeline_dir.name))
+    return decisions
 
 
 def source_root_for(pipeline_dir: Path, meta: dict[str, Any] | None = None) -> Path:
