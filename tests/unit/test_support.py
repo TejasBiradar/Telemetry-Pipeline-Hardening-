@@ -98,6 +98,13 @@ def test_tracer_records_columns_and_leaves_module_unwrapped(tmp_path: Path) -> N
     assert trace.snapshots[1].new_columns == ["b"] and module.calc is original
 
 
+def test_load_module_imports_a_sibling_file(tmp_path: Path) -> None:
+    (tmp_path / "sibling_probe_helper.py").write_text("VALUE = 7\n")
+    (tmp_path / "run.py").write_text("from sibling_probe_helper import VALUE\n")
+    module = load_module(tmp_path / "run.py", name="sibling_probe_run")
+    assert module.VALUE == 7
+
+
 def test_tracer_reports_a_crash_instead_of_raising(tmp_path: Path) -> None:
     (tmp_path / "run.py").write_text(PIPELINE)
     trace = trace_pipeline(load_module(tmp_path / "run.py"), "run", ["load", "calc"], "x")

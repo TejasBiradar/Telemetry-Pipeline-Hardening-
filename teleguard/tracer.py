@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import functools
 import importlib.util
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,11 +46,20 @@ class RuntimeTrace:
 
 
 def load_module(path: Path, name: str = "pipeline_under_test") -> ModuleType:
+    """Load a pipeline file, including imports of modules that sit beside it."""
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    source_dir = str(path.parent)
+    inserted = source_dir not in sys.path
+    if inserted:
+        sys.path.insert(0, source_dir)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if inserted and source_dir in sys.path:
+            sys.path.remove(source_dir)
     return module
 
 
