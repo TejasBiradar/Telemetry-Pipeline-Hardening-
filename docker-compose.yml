@@ -1,4 +1,5 @@
-# Three containers:
+# Four containers:
+#   postgres   — stage tables for the shipment ledger trigger
 #   minio      — stage files from pipeline runs
 #   pipeline   — trigger button and run success/failure
 #   detection  — Driftline API, agent, and platform UI
@@ -6,6 +7,22 @@
 #   docker compose up --build
 #
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-teleguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teleguard}
+      POSTGRES_DB: ${POSTGRES_DB:-teleguard}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   minio:
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
@@ -36,8 +53,11 @@ services:
       MINIO_BUCKET: demo
       MINIO_SECURE: "false"
       PIPELINE_SRC_ROOT: /app/pipeline_src
+      STAGE_DATABASE_URL: postgresql://${POSTGRES_USER:-teleguard}:${POSTGRES_PASSWORD:-teleguard}@postgres:5432/${POSTGRES_DB:-teleguard}
     depends_on:
       minio:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
 
   detection:
@@ -49,11 +69,14 @@ services:
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      STAGE_DATABASE_URL: postgresql://${POSTGRES_USER:-teleguard}:${POSTGRES_PASSWORD:-teleguard}@postgres:5432/${POSTGRES_DB:-teleguard}
     volumes:
       - onboard_data:/app/data
       - ./pipelines:/app/pipelines:ro
     depends_on:
       minio:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/api/health"]
@@ -63,5 +86,6 @@ services:
       start_period: 45s
 
 volumes:
+  postgres_data:
   minio_data:
   onboard_data:
