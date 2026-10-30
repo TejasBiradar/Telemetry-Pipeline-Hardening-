@@ -484,6 +484,38 @@ select {
   max-width: 640px;
 }
 
+.flow-advanced {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.flow-advanced > summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+  padding: 12px 14px;
+}
+
+.flow-advanced > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.flow-advanced-hint {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.flow-advanced-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 14px 14px;
+}
+
 .flow-label {
   display: grid;
   gap: 6px;
@@ -519,6 +551,165 @@ select {
   gap: 16px;
   font-weight: 500;
   color: var(--text);
+}
+
+.graph-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.graph-panel-body {
+  display: grid;
+  gap: 14px;
+}
+
+.graph-canvas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(circle, rgba(20, 32, 28, 0.08) 1px, transparent 1px),
+    var(--surface);
+  background-size: 18px 18px, auto;
+}
+
+.graph-board {
+  position: relative;
+}
+
+.graph-edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.graph-edge {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
+.graph-arrow {
+  fill: var(--accent);
+}
+
+.graph-stage {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.graph-stage:hover,
+.graph-stage:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.graph-stage.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.graph-stage.is-output {
+  background: var(--data-soft);
+}
+
+.graph-stage-index {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent-text);
+}
+
+.graph-stage-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-stage-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.graph-legend {
+  align-self: stretch;
+  margin: 0;
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.graph-detail {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.graph-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.graph-detail-title {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.graph-detail-label {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.graph-output {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.graph-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 148px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.graph-chips .graph-chip {
+  margin: 0;
 }
 
 .flow-note {

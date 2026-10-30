@@ -144,6 +144,7 @@ class CodeOnboardOut(BaseModel):
     confirmed_stages: list[str] = []
     agent_checkpoints: list[dict[str, str]] = []
     output_store: dict[str, object] | None = None
+    graph: dict[str, object] = {}
     metadata_path: str
     analyzed_at: str
 

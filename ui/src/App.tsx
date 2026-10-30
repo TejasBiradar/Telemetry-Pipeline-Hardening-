@@ -5,10 +5,9 @@ import { ClientFlow } from "./views/ClientFlow"
 
 const TITLES: Record<string, string> = {
   "/source": "Source",
+  "/graph": "Code graph",
   "/stages": "Stages",
   "/guarantees": "Guarantees",
-  "/outputs": "Outputs",
-  "/minio": "Outputs",
   "/results": "Results",
 }
 
@@ -30,10 +29,11 @@ export function App() {
           <Route path="/" element={<KeepSearch pathname="/source" />} />
           <Route path="/clients" element={<KeepSearch pathname="/source" />} />
           <Route path="/source" element={<ClientFlow />} />
+          <Route path="/graph" element={<ClientFlow />} />
           <Route path="/stages" element={<ClientFlow />} />
           <Route path="/guarantees" element={<ClientFlow />} />
-          <Route path="/outputs" element={<ClientFlow />} />
-          <Route path="/minio" element={<KeepSearch pathname="/outputs" />} />
+          <Route path="/outputs" element={<KeepSearch pathname="/source" />} />
+          <Route path="/minio" element={<KeepSearch pathname="/source" />} />
           <Route path="/results" element={<ClientFlow />} />
         </Routes>
       </div>

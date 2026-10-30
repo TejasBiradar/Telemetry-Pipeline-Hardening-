@@ -75,11 +75,30 @@ export interface OutputStoreRequest {
   kind: "minio" | "database"
   endpoint: string
   bucket: string
+  prefix: string
   secure: boolean
   dsn_env: string
   db_layout: string
   stage_column: string
   stages: StageLocation[]
+}
+
+export interface OnboardGraphNode {
+  id: string
+  type: string
+  label: string
+  attrs: Record<string, unknown>
+}
+
+export interface OnboardGraphEdge {
+  source: string
+  target: string
+  type: string
+}
+
+export interface OnboardGraph {
+  nodes: OnboardGraphNode[]
+  edges: OnboardGraphEdge[]
 }
 
 export interface CodeOnboardDetail {
@@ -98,6 +117,7 @@ export interface CodeOnboardDetail {
   confirmed_stages: string[]
   agent_checkpoints: AgentCheckpoint[]
   output_store: MinioStore | null
+  graph: OnboardGraph
   analyzed_at: string
 }
 

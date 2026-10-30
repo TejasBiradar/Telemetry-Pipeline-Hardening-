@@ -4,9 +4,9 @@ import { api } from "../api/client"
 
 const NAV = [
   { to: "/source", label: "Source" },
+  { to: "/graph", label: "Code graph" },
   { to: "/stages", label: "Stages" },
   { to: "/guarantees", label: "Guarantees" },
-  { to: "/outputs", label: "Outputs" },
   { to: "/results", label: "Results" },
 ]
 

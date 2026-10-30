@@ -99,7 +99,7 @@ class MinioOutputStore:
 
     @staticmethod
     def from_json(raw: dict[str, Any]) -> MinioOutputStore:
-        kind = str(raw.get("type", "minio"))
+        kind = str(raw.get("type", raw.get("kind", "minio"))).strip() or "minio"
         if kind not in {"minio", "database"}:
             raise ValueError(f"unsupported output store type: {kind}")
         endpoint = str(raw.get("endpoint", "")).strip()
