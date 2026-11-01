@@ -21,11 +21,12 @@ def connect(store: MinioOutputStore):  # type: ignore[no-untyped-def]
     """Return a ``minio.Minio`` client using env credentials named in ``store``."""
     from minio import Minio
 
-    access = os.environ.get(store.access_key_env, "")
-    secret = os.environ.get(store.secret_key_env, "")
+    access = store.access_key or os.environ.get(store.access_key_env, "")
+    secret = store.secret_key or os.environ.get(store.secret_key_env, "")
     if not access or not secret:
         raise RuntimeError(
-            f"set {store.access_key_env} and {store.secret_key_env} for MinIO access"
+            "set the MinIO access key and secret key on the connector, "
+            f"or {store.access_key_env} and {store.secret_key_env}"
         )
     endpoint = store.endpoint.replace("https://", "").replace("http://", "")
     return Minio(

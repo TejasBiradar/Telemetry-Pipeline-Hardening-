@@ -4,9 +4,10 @@ A stage location is whatever the client declares:
 
 * MinIO folder, ending in ``/`` — every batch file under that prefix
 * MinIO object or glob — one file, or a pattern such as ``outputs/ingest_*.csv``
-* Database table — rows in that table (connection string stays in the environment)
+* Database table — rows in that table
 
-Credentials are never stored here. The agent reads them from named env vars.
+The connector form saves host, user, and secret on the pipeline. An older record
+that only names an env var still works when those fields are blank.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from typing import Any
 
 # Used when a saved store still has only a shared prefix and no per-stage locations.
 STAGE_OUTPUT_LAYOUT = "{prefix}/{stage}/"
-_TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
+_TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*){0,2}$")
 _COLUMN_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -46,6 +47,19 @@ class MinioOutputStore:
     db_layout: str = ""
     stage_column: str = ""
     stages: tuple[StageLocation, ...] = ()
+    # Saved connection. When host/user/database are set, the agent uses these
+    # instead of the shared server env var.
+    host: str = ""
+    port: int = 5432
+    database: str = ""
+    username: str = ""
+    password: str = ""
+    db_schema: str = ""
+    access_key: str = ""
+    secret_key: str = ""
+    http_path: str = ""
+    access_token: str = ""
+    catalog: str = ""
 
     def normalized_prefix(self) -> str:
         return self.prefix.strip().strip("/")
@@ -75,9 +89,22 @@ class MinioOutputStore:
 
     def describe(self, location: str) -> str:
         """Human-readable watch target. Secrets are not included."""
-        if self.kind == "database":
+        if self.kind in {"database", "postgres"}:
             return f"db://{location}"
         return f"s3://{self.bucket}/{location.lstrip('/')}"
+
+    def postgres_dsn(self) -> str:
+        """Connection string from the saved host, user, and database.
+
+        Empty when those fields are blank, so an older record can still use ``dsn_env``.
+        """
+        from urllib.parse import quote
+
+        if not (self.host.strip() and self.username.strip() and self.database.strip()):
+            return ""
+        user = quote(self.username, safe="")
+        auth = f"{user}:{quote(self.password, safe='')}@" if self.password else f"{user}@"
+        return f"postgresql://{auth}{self.host.strip()}:{self.port}/{quote(self.database, safe='')}"
 
     def to_json(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -91,6 +118,17 @@ class MinioOutputStore:
             "dsn_env": self.dsn_env,
             "db_layout": self.db_layout,
             "stage_column": self.stage_column,
+            "host": self.host,
+            "port": self.port,
+            "database": self.database,
+            "username": self.username,
+            "password": self.password,
+            "db_schema": self.db_schema,
+            "access_key": self.access_key,
+            "secret_key": self.secret_key,
+            "http_path": self.http_path,
+            "access_token": self.access_token,
+            "catalog": self.catalog,
             "stages": [{"stage": item.stage, "location": item.location} for item in self.stages],
         }
         if not self.stages:
@@ -100,7 +138,7 @@ class MinioOutputStore:
     @staticmethod
     def from_json(raw: dict[str, Any]) -> MinioOutputStore:
         kind = str(raw.get("type", raw.get("kind", "minio"))).strip() or "minio"
-        if kind not in {"minio", "database"}:
+        if kind not in {"minio", "database", "postgres"}:
             raise ValueError(f"unsupported output store type: {kind}")
         endpoint = str(raw.get("endpoint", "")).strip()
         bucket = str(raw.get("bucket", "")).strip()
@@ -108,6 +146,9 @@ class MinioOutputStore:
         stages = _parse_stages(raw.get("stages", []))
         db_layout = str(raw.get("db_layout", "")).strip()
         stage_column = str(raw.get("stage_column", "")).strip()
+        host = str(raw.get("host", "")).strip()
+        database = str(raw.get("database", "")).strip()
+        username = str(raw.get("username", "")).strip()
         if kind == "minio":
             if not endpoint:
                 raise ValueError("output store endpoint is required")
@@ -115,6 +156,13 @@ class MinioOutputStore:
                 raise ValueError("output store bucket is required")
         else:
             _validate_database(db_layout, stage_column, stages)
+        port_raw = raw.get("port", 5432)
+        try:
+            port = int(port_raw) if port_raw not in (None, "") else 5432
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"port must be an integer: {port_raw!r}") from exc
+        if port < 1 or port > 65535:
+            raise ValueError(f"port must be an integer: {port_raw!r}")
         return MinioOutputStore(
             endpoint=endpoint,
             bucket=bucket,
@@ -127,6 +175,17 @@ class MinioOutputStore:
             db_layout=db_layout,
             stage_column=stage_column,
             stages=tuple(stages),
+            host=host,
+            port=port,
+            database=database,
+            username=username,
+            password=str(raw.get("password", "")),
+            db_schema=str(raw.get("db_schema", "")).strip(),
+            access_key=str(raw.get("access_key", "")),
+            secret_key=str(raw.get("secret_key", "")),
+            http_path=str(raw.get("http_path", "")).strip(),
+            access_token=str(raw.get("access_token", "")),
+            catalog=str(raw.get("catalog", "")).strip(),
         )
 
 
@@ -170,7 +229,7 @@ def validate_column_name(name: str) -> str:
 
 
 def validate_table_name(name: str) -> str:
-    """Accept ``table`` or ``schema.table``. Reject anything that is not an identifier."""
+    """Accept ``table``, ``schema.table``, or ``catalog.schema.table``."""
     cleaned = name.strip()
     if not _TABLE_NAME.fullmatch(cleaned):
         raise ValueError(f"table name must be an identifier: {name!r}")

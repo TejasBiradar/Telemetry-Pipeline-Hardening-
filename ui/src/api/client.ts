@@ -67,12 +67,23 @@ export interface MinioStore {
   dsn_env?: string
   db_layout?: string
   stage_column?: string
+  host?: string
+  port?: number
+  database?: string
+  username?: string
+  password?: string
+  db_schema?: string
+  access_key?: string
+  secret_key?: string
+  http_path?: string
+  access_token?: string
+  catalog?: string
   stages?: StageLocation[]
   layout?: string
 }
 
 export interface OutputStoreRequest {
-  kind: "minio" | "database"
+  kind: "minio" | "postgres"
   endpoint: string
   bucket: string
   prefix: string
@@ -80,6 +91,17 @@ export interface OutputStoreRequest {
   dsn_env: string
   db_layout: string
   stage_column: string
+  host: string
+  port: number
+  database: string
+  username: string
+  password: string
+  db_schema: string
+  access_key: string
+  secret_key: string
+  http_path: string
+  access_token: string
+  catalog: string
   stages: StageLocation[]
 }
 

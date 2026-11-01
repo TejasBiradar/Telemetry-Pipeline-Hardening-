@@ -78,7 +78,7 @@ def process_once(
     for cp in checkpoints:
         stage = cp["stage"]
         checkpoint = cp.get("name") or f"after_{stage}"
-        if store.kind == "database":
+        if store.kind in {"database", "postgres"}:
             runs.extend(
                 _process_table(
                     store,

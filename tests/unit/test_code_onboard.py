@@ -280,6 +280,38 @@ def test_shared_database_table_needs_one_table_and_a_column() -> None:
         )
 
 
+def test_saved_postgres_connector_builds_its_own_dsn() -> None:
+    store = MinioOutputStore.from_json(
+        {
+            "kind": "postgres",
+            "host": "warehouse.internal",
+            "port": 5432,
+            "database": "ledger",
+            "username": "reader",
+            "password": "p@ss word",
+            "db_schema": "public",
+            "db_layout": "per_table",
+            "stages": [{"stage": "landed", "location": "shipment_ledger_landed"}],
+        }
+    )
+    assert store.postgres_dsn() == "postgresql://reader:p%40ss%20word@warehouse.internal:5432/ledger"
+    assert store.to_json()["password"] == "p@ss word"
+    assert store.describe("shipment_ledger_landed") == "db://shipment_ledger_landed"
+
+
+def test_databricks_is_not_a_connector_yet() -> None:
+    with pytest.raises(ValueError, match="unsupported output store type"):
+        MinioOutputStore.from_json(
+            {
+                "kind": "databricks",
+                "host": "adb-1.azuredatabricks.net",
+                "http_path": "/sql/1.0/warehouses/wh",
+                "access_token": "dapi-secret",
+                "stages": [{"stage": "daily", "location": "daily"}],
+            }
+        )
+
+
 def test_output_store_accepts_kind_when_type_is_absent() -> None:
     """The API body uses kind; saved records use type."""
     store = MinioOutputStore.from_json(

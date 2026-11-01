@@ -80,6 +80,12 @@ Every agent-generated change is logged here before it merges. The panel asks for
 
 | 38 | 2026-10-31 | — | Postgres runtime store | When `STAGE_DATABASE_URL` is set, registration, stages, guarantees, review decisions, notify contact, agent runs, and check alerts are written to Postgres (`db/migrations/002_runtime_store.sql`). Existing `data/onboarded` JSON is copied in once. A temporary directory in tests still uses files so CI has no database. | _pending (team)_ | — | The `pipelines` table in `001_schema_n_pipelines.sql` is not applied and does not match the UUID registration record, so the live tables are separate. | — |
 
+| 39 | 2026-10-31 | — | Connector form | Source → Connector saves a MinIO, Postgres, or Databricks connection on the pipeline (host, keys, token, and the stage location). The agent reads with those saved values. A record that only names `STAGE_DATABASE_URL` still uses that env var. | _pending (team)_ | — | Secrets are stored on the registration row. There is no account boundary yet, so anyone who can open the API can read them back. | — |
+
+| 40 | 2026-10-31 | — | Source layout | Registration and the connector are two cards. Registration is a short summary after analysis. The connector is its own form with a type picker, a connection block, and a stage-location block. | _pending (team)_ | — | The first save used to write the connector in the same submit as registration, so both sets of fields sat in one form. | — |
+
+| 41 | 2026-10-31 | — | Connector scope | Databricks is no longer a connector. The form offers MinIO and Postgres. A Databricks warehouse stays future scope. | _pending (team)_ | — | The SQL-warehouse reader and its form were built ahead of the decision. Removed from the product path so the demo does not offer a connector that is not in scope. | — |
+
 ## Categories to track
 - **Confidently wrong**: the agent stated something about the legacy code that the evidence didn't support
 - **Scope creep**: changed files outside the task (especially `legacy/`)

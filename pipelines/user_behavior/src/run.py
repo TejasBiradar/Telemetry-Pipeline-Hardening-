@@ -1,7 +1,7 @@
-"""User behavior pipeline: session-based engagement tracking.
+"""User behavior pipeline: one Python file, several functions.
 
-Process: ingest → filter_sessions → aggregate.
-Reads the same JSONL batch format as web_analytics so a shared datagen feed can drive it.
+Shape: single file. ``run`` calls ``ingest``, ``filter_sessions``, and ``aggregate``
+in this module. Session JSONL uses the same batch format as web analytics.
 """
 
 from __future__ import annotations

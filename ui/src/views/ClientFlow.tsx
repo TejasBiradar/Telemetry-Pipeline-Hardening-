@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ChangeEvent, type FormEvent } from "react"
+import { useCallback, useState, type ChangeEvent, type FormEvent } from "react"
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
@@ -52,25 +52,26 @@ export function ClientFlow() {
 
   return (
     <div className="page">
+      {page === "source" && pipelineId && detail.isLoading ? (
+        <p className="flow-note">Loading pipeline…</p>
+      ) : null}
+      {page === "source" && pipelineId && detail.error ? (
+        <p className="flow-error">{errorText(detail.error)}</p>
+      ) : null}
+      {page === "source" && (!pipelineId || detail.data) ? (
+        <PipelineForm
+          key={pipelineId || "new"}
+          detail={pipelineId ? detail.data : undefined}
+          onCreated={(id) => {
+            void refresh(id)
+            navigate({ pathname: "/source", search: `?id=${id}`, hash: "connector" })
+          }}
+          onSaved={() => refresh(pipelineId)}
+        />
+      ) : null}
+      {page === "source" ? null : (
       <section className="card">
-        {page === "source" && pipelineId && detail.isLoading ? (
-          <p className="flow-note">Loading pipeline…</p>
-        ) : null}
-        {page === "source" && pipelineId && detail.error ? (
-          <p className="flow-error">{errorText(detail.error)}</p>
-        ) : null}
-        {page === "source" && (!pipelineId || detail.data) ? (
-          <PipelineForm
-            key={pipelineId || "new"}
-            detail={pipelineId ? detail.data : undefined}
-            onCreated={(id) => {
-              void refresh(id)
-              navigate({ pathname: "/graph", search: `?id=${id}` })
-            }}
-            onSaved={() => refresh(pipelineId)}
-          />
-        ) : null}
-        {page !== "source" && !pipelineId ? (
+        {!pipelineId ? (
           <p className="flow-note">
             Register a pipeline from <Link to="/source">Source</Link> first.
           </p>
@@ -102,6 +103,7 @@ export function ClientFlow() {
           />
         ) : null}
       </section>
+      )}
     </div>
   )
 }
@@ -140,7 +142,6 @@ function PipelineForm({
   onCreated: (id: string) => void
   onSaved: () => Promise<void>
 }) {
-  const advancedRef = useRef<HTMLDetailsElement>(null)
   const [registered, setRegistered] = useState<CodeOnboardDetail | null>(null)
   const record = detail ?? registered ?? undefined
   const locked = record !== undefined
@@ -157,28 +158,21 @@ function PipelineForm({
   const [outputError, setOutputError] = useState("")
   const stageNames = stageNamesFor(record)
 
-  const save = useMutation({
-    mutationFn: async (body: CodeOnboardRequest | null) => {
-      if (record) {
-        await api.setOutputStore(record.pipeline_id, outputRequest(output, stageNamesFor(record)))
-        return record
-      }
-      if (!body) throw new Error("Registration details are missing")
-      const created = await api.createCodeOnboard(body)
-      try {
-        await api.setOutputStore(created.pipeline_id, outputRequest(output, created.stages))
-      } catch (error) {
-        setRegistered(created)
-        throw error
-      }
-      return created
-    },
+  const register = useMutation({
+    mutationFn: (body: CodeOnboardRequest) => api.createCodeOnboard(body),
     onSuccess: (saved) => {
-      if (detail) {
-        void onSaved()
-        return
-      }
+      setRegistered(saved)
       onCreated(saved.pipeline_id)
+    },
+  })
+
+  const saveConnector = useMutation({
+    mutationFn: async () => {
+      if (!record) throw new Error("Register the pipeline first")
+      await api.setOutputStore(record.pipeline_id, outputRequest(output, stageNamesFor(record)))
+    },
+    onSuccess: () => {
+      void onSaved()
     },
   })
 
@@ -193,155 +187,211 @@ function PipelineForm({
     else if (field === "entry-point") setEntry(value)
   }, [])
 
-  const onSubmit = useCallback(
+  const preventSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+  }, [])
+
+  const onRegister = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault()
-      const message = validateOutput(output, stageNames, locked)
+      register.mutate(registrationRequest(name, entry, mode, sourcePath, gitUrl, gitRef, subdir))
+    },
+    [entry, gitRef, gitUrl, mode, name, register, sourcePath, subdir],
+  )
+
+  const onSaveConnector = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      const message = validateOutput(output, stageNames, true)
       if (message) {
         setOutputError(message)
-        if (advancedRef.current) advancedRef.current.open = true
         return
       }
       setOutputError("")
-      const body: CodeOnboardRequest | null = locked
-        ? null
-        : registrationRequest(name, entry, mode, sourcePath, gitUrl, gitRef, subdir)
-      save.mutate(body)
+      saveConnector.mutate()
     },
-    [entry, gitRef, gitUrl, locked, mode, name, output, save, sourcePath, stageNames, subdir],
+    [output, saveConnector, stageNames],
   )
 
-  const pendingLabel = detail || registered ? "Saving…" : "Analyzing…"
-  const idleLabel = detail || registered ? "Save" : "Analyze and register"
+  const sourceLabel = mode === "git"
+    ? [gitUrl, subdir].filter((part) => part.trim().length > 0).join(" / ")
+    : sourcePath
 
   return (
-    <form className="flow-form" onSubmit={onSubmit}>
-      <div>
-        <div className="card-title">{locked ? "Pipeline registration" : "Register source"}</div>
-        <p className="card-desc">
-          {locked
-            ? "This pipeline is already registered. Output location is under Advanced settings."
-            : "We assign a pipeline id. The repo is analyzed, then only metadata is kept. Output location is under Advanced settings."}
-        </p>
-      </div>
-      <label className="flow-label" htmlFor="pipeline-name">
-        Display name
-        <input
-          id="pipeline-name"
-          name="pipeline-name"
-          className="flow-input"
-          value={name}
-          onChange={onRegistrationInput}
-          readOnly={locked}
-          required
-        />
-      </label>
-      <fieldset className="flow-choice" style={{ border: 0, padding: 0 }} disabled={locked}>
-        <legend className="flow-label">Code location</legend>
-        <label htmlFor="mode-local">
-          <input
-            id="mode-local"
-            type="radio"
-            name="source-mode"
-            value="local"
-            checked={mode === "local"}
-            onChange={onRegistrationInput}
-          />
-          {" "}Local folder
-        </label>
-        <label htmlFor="mode-git">
-          <input
-            id="mode-git"
-            type="radio"
-            name="source-mode"
-            value="git"
-            checked={mode === "git"}
-            onChange={onRegistrationInput}
-          />
-          {" "}Remote repository
-        </label>
-      </fieldset>
-      {mode === "local" ? (
-        <label className="flow-label" htmlFor="source-path">
-          Folder the API can read
-          <input
-            id="source-path"
-            name="source-path"
-            className="flow-input"
-            value={sourcePath}
-            onChange={onRegistrationInput}
-            readOnly={locked}
-            required={!locked}
-            placeholder="/path/to/pipeline/src"
-          />
-        </label>
+    <div className="flow-stack">
+    <form className="card flow-form" onSubmit={locked ? preventSubmit : onRegister}>
+      <header className="flow-section-head">
+        <div>
+          <p className="flow-step">1 · Pipeline</p>
+          <div className="card-title">Registration</div>
+          <p className="card-desc">
+            {locked
+              ? "The source is analyzed. Stages and guarantees come from this registration."
+              : "Name the pipeline and point at its code. Analysis keeps the metadata and drops the clone."}
+          </p>
+        </div>
+      </header>
+      {locked ? (
+        <dl className="flow-facts">
+          <div>
+            <dt>Name</dt>
+            <dd>{name}</dd>
+          </div>
+          <div>
+            <dt>{mode === "git" ? "Repository" : "Folder"}</dt>
+            <dd className="mono">{sourceLabel || "—"}</dd>
+          </div>
+          {mode === "git" ? (
+            <div>
+              <dt>Branch</dt>
+              <dd className="mono">{gitRef || "HEAD"}</dd>
+            </div>
+          ) : null}
+          <div>
+            <dt>Adapter</dt>
+            <dd>{record?.adapter || "—"}</dd>
+          </div>
+          <div>
+            <dt>Pipeline id</dt>
+            <dd className="mono">{record?.pipeline_id}</dd>
+          </div>
+        </dl>
       ) : (
         <>
-          <label className="flow-label" htmlFor="git-url">
-            Git URL
+          <label className="flow-label" htmlFor="pipeline-name">
+            Display name
             <input
-              id="git-url"
-              name="git-url"
+              id="pipeline-name"
+              name="pipeline-name"
               className="flow-input"
-              value={gitUrl}
+              value={name}
               onChange={onRegistrationInput}
-              readOnly={locked}
-              required={!locked}
-              placeholder="https://github.com/org/repo.git"
+              required
             />
           </label>
-          <label className="flow-label" htmlFor="git-ref">
-            Branch or tag
+          <fieldset className="flow-fieldset">
+            <legend className="flow-label">Code location</legend>
+            <div className="flow-choice">
+              <label htmlFor="mode-local">
+                <input
+                  id="mode-local"
+                  type="radio"
+                  name="source-mode"
+                  value="local"
+                  checked={mode === "local"}
+                  onChange={onRegistrationInput}
+                />
+                {" "}Local folder
+              </label>
+              <label htmlFor="mode-git">
+                <input
+                  id="mode-git"
+                  type="radio"
+                  name="source-mode"
+                  value="git"
+                  checked={mode === "git"}
+                  onChange={onRegistrationInput}
+                />
+                {" "}Remote repository
+              </label>
+            </div>
+          </fieldset>
+          {mode === "local" ? (
+            <label className="flow-label" htmlFor="source-path">
+              Folder the API can read
+              <input
+                id="source-path"
+                name="source-path"
+                className="flow-input"
+                value={sourcePath}
+                onChange={onRegistrationInput}
+                required
+                placeholder="/path/to/pipeline/src"
+              />
+            </label>
+          ) : (
+            <div className="flow-grid-2">
+              <label className="flow-label flow-span-2" htmlFor="git-url">
+                Git URL
+                <input
+                  id="git-url"
+                  name="git-url"
+                  className="flow-input"
+                  value={gitUrl}
+                  onChange={onRegistrationInput}
+                  required
+                  placeholder="https://github.com/org/repo.git"
+                />
+              </label>
+              <label className="flow-label" htmlFor="git-ref">
+                Branch or tag
+                <input
+                  id="git-ref"
+                  name="git-ref"
+                  className="flow-input"
+                  value={gitRef}
+                  onChange={onRegistrationInput}
+                />
+              </label>
+              <label className="flow-label" htmlFor="source-subdir">
+                Subfolder
+                <input
+                  id="source-subdir"
+                  name="source-subdir"
+                  className="flow-input"
+                  value={subdir}
+                  onChange={onRegistrationInput}
+                  placeholder="src"
+                />
+              </label>
+            </div>
+          )}
+          <label className="flow-label" htmlFor="entry-point">
+            Python entry (module.function)
             <input
-              id="git-ref"
-              name="git-ref"
+              id="entry-point"
+              name="entry-point"
               className="flow-input"
-              value={gitRef}
+              value={entry}
               onChange={onRegistrationInput}
-              readOnly={locked}
             />
           </label>
-          <label className="flow-label" htmlFor="source-subdir">
-            Subfolder inside the repo
-            <input
-              id="source-subdir"
-              name="source-subdir"
-              className="flow-input"
-              value={subdir}
-              onChange={onRegistrationInput}
-              readOnly={locked}
-              placeholder="src"
-            />
-          </label>
+          {register.isError ? <p className="flow-error">{errorText(register.error)}</p> : null}
+          <div>
+            <button type="submit" className="btn btn-primary" disabled={register.isPending || name.trim().length === 0}>
+              {register.isPending ? "Analyzing…" : "Analyze and register"}
+            </button>
+          </div>
         </>
       )}
-      {locked ? null : (
-        <label className="flow-label" htmlFor="entry-point">
-          Python entry (module.function)
-          <input
-            id="entry-point"
-            name="entry-point"
-            className="flow-input"
-            value={entry}
-            onChange={onRegistrationInput}
-          />
-        </label>
-      )}
-      <details className="flow-advanced" ref={advancedRef}>
-        <summary>
-          Advanced settings
-          <span className="flow-advanced-hint">Output location</span>
-        </summary>
-        <OutputSettings draft={output} stageNames={stageNames} onChange={setOutput} />
-      </details>
-      {outputError ? <p className="flow-error">{outputError}</p> : null}
-      {save.isError ? <p className="flow-error">{errorText(save.error)}</p> : null}
-      <div>
-        <button type="submit" className="btn btn-primary" disabled={save.isPending || name.trim().length === 0}>
-          {save.isPending ? pendingLabel : idleLabel}
-        </button>
-      </div>
     </form>
+    <section className="card flow-form" id="connector">
+      <header className="flow-section-head">
+        <div>
+          <p className="flow-step">2 · Connector</p>
+          <div className="card-title">Where stage output is read</div>
+          <p className="card-desc">
+            Saved on this pipeline. Pick one system, then name the folder or table for each stage.
+          </p>
+        </div>
+      </header>
+      {locked ? (
+        <form className="flow-form" onSubmit={onSaveConnector}>
+          <OutputSettings draft={output} stageNames={stageNames} onChange={setOutput} />
+          {outputError ? <p className="flow-error">{outputError}</p> : null}
+          {saveConnector.isError ? <p className="flow-error">{errorText(saveConnector.error)}</p> : null}
+          <div className="flow-actions">
+            <button type="submit" className="btn btn-primary" disabled={saveConnector.isPending}>
+              {saveConnector.isPending ? "Saving…" : "Save connector"}
+            </button>
+            {saveConnector.isSuccess ? <p className="flow-saved">Connector saved.</p> : null}
+          </div>
+        </form>
+      ) : (
+        <p className="flow-note">Register the pipeline first. The connector form opens on this pipeline after analysis.</p>
+      )}
+    </section>
+    </div>
   )
 }
 
@@ -358,7 +408,7 @@ function OutputSettings({
     (event: ChangeEvent<HTMLInputElement>) => {
       const field = event.currentTarget.name
       const value = event.currentTarget.value
-      if (field === "store-kind" && (value === "minio" || value === "database")) {
+      if (field === "store-kind" && (value === "minio" || value === "postgres")) {
         onChange({ ...draft, kind: value })
         return
       }
@@ -382,178 +432,168 @@ function OutputSettings({
       if (field === "endpoint") onChange({ ...draft, endpoint: value })
       else if (field === "bucket") onChange({ ...draft, bucket: value })
       else if (field === "folder") onChange({ ...draft, folder: value })
-      else if (field === "dsn-env") onChange({ ...draft, dsnEnv: value })
       else if (field === "shared-table") onChange({ ...draft, sharedTable: value })
       else if (field === "stage-column") onChange({ ...draft, stageColumn: value })
+      else if (field === "host") onChange({ ...draft, host: value })
+      else if (field === "port") onChange({ ...draft, port: value })
+      else if (field === "database") onChange({ ...draft, database: value })
+      else if (field === "username") onChange({ ...draft, username: value })
+      else if (field === "password") onChange({ ...draft, password: value })
+      else if (field === "db-schema") onChange({ ...draft, dbSchema: value })
+      else if (field === "access-key") onChange({ ...draft, accessKey: value })
+      else if (field === "secret-key") onChange({ ...draft, secretKey: value })
+      else if (field === "http-path") onChange({ ...draft, httpPath: value })
+      else if (field === "access-token") onChange({ ...draft, accessToken: value })
+      else if (field === "catalog") onChange({ ...draft, catalog: value })
     },
     [draft, onChange],
   )
 
   return (
-    <div className="flow-advanced-body">
-      <p className="flow-note">
-        {draft.kind === "minio"
-          ? "One folder for the pipeline. Choose whether each stage gets its own subfolder or a file in that same folder."
-          : "Driftline does not guess the tables. Tell it whether each stage has its own table, or every stage is a row in one table."}
-      </p>
-      <fieldset className="flow-choice" style={{ border: 0, padding: 0 }}>
-        <legend className="flow-label">Store</legend>
-        <label htmlFor="store-minio">
-          <input
-            id="store-minio"
-            type="radio"
-            name="store-kind"
-            value="minio"
-            checked={draft.kind === "minio"}
-            onChange={onInput}
-          />
-          {" "}MinIO
+    <>
+      <fieldset className="connector-kinds">
+        <legend className="visually-hidden">Connector type</legend>
+        <label className="connector-kind" htmlFor="store-minio">
+          <input id="store-minio" className="visually-hidden" type="radio" name="store-kind" value="minio" checked={draft.kind === "minio"} onChange={onInput} />
+          <span className="connector-kind-name">MinIO</span>
+          <span className="connector-kind-hint">Object storage</span>
         </label>
-        <label htmlFor="store-database">
-          <input
-            id="store-database"
-            type="radio"
-            name="store-kind"
-            value="database"
-            checked={draft.kind === "database"}
-            onChange={onInput}
-          />
-          {" "}Database
+        <label className="connector-kind" htmlFor="store-postgres">
+          <input id="store-postgres" className="visually-hidden" type="radio" name="store-kind" value="postgres" checked={draft.kind === "postgres"} onChange={onInput} />
+          <span className="connector-kind-name">Postgres</span>
+          <span className="connector-kind-hint">SQL tables</span>
         </label>
       </fieldset>
-      {draft.kind === "minio" ? (
-        <>
-          <label className="flow-label" htmlFor="minio-endpoint">
-            Endpoint
-            <input id="minio-endpoint" name="endpoint" className="flow-input" value={draft.endpoint} onChange={onInput} />
-          </label>
-          <label className="flow-label" htmlFor="minio-bucket">
-            Bucket
-            <input id="minio-bucket" name="bucket" className="flow-input" value={draft.bucket} onChange={onInput} />
-          </label>
-          <label className="flow-choice" htmlFor="minio-secure">
-            <input
-              id="minio-secure"
-              name="minio-secure"
-              type="checkbox"
-              checked={draft.secure}
-              onChange={onInput}
-            />
-            Use HTTPS
-          </label>
-          <label className="flow-label" htmlFor="output-folder">
-            Folder
-            <input id="output-folder" name="folder" className="flow-input" value={draft.folder} onChange={onInput} />
-          </label>
-          <fieldset className="flow-choice" style={{ border: 0, padding: 0 }}>
-            <legend className="flow-label">Layout</legend>
-            <label htmlFor="layout-subfolder">
-              <input
-                id="layout-subfolder"
-                type="radio"
-                name="output-layout"
-                value="subfolder"
-                checked={draft.layout === "subfolder"}
-                onChange={onInput}
-              />
-              {" "}Subfolder
+      <div className="flow-block">
+        <h3 className="flow-block-title">Connection</h3>
+        {draft.kind === "minio" ? (
+          <div className="flow-grid-2">
+            <label className="flow-label flow-span-2" htmlFor="minio-endpoint">
+              Endpoint
+              <input id="minio-endpoint" name="endpoint" className="flow-input" value={draft.endpoint} onChange={onInput} autoComplete="off" />
             </label>
-            <label htmlFor="layout-single">
-              <input
-                id="layout-single"
-                type="radio"
-                name="output-layout"
-                value="single"
-                checked={draft.layout === "single"}
-                onChange={onInput}
-              />
-              {" "}Single folder
+            <label className="flow-label" htmlFor="minio-access-key">
+              Access key
+              <input id="minio-access-key" name="access-key" className="flow-input" value={draft.accessKey} onChange={onInput} autoComplete="off" />
             </label>
-          </fieldset>
-          <p className="flow-note">
-            {draft.layout === "subfolder"
-              ? "Each stage is a folder under this path, for example outputs/ingest/."
-              : "Every stage file sits in this one folder. The file name starts with the stage, for example outputs/ingest.csv."}
-          </p>
-        </>
-      ) : (
-        <>
-          <label className="flow-label" htmlFor="dsn-env">
-            Env var that holds the database URL
-            <input id="dsn-env" name="dsn-env" className="flow-input" value={draft.dsnEnv} onChange={onInput} />
-          </label>
-          <fieldset className="flow-choice" style={{ border: 0, padding: 0 }}>
-            <legend className="flow-label">Tables</legend>
-            <label htmlFor="db-per-table">
-              <input
-                id="db-per-table"
-                type="radio"
-                name="db-layout"
-                value="per_table"
-                checked={draft.dbLayout === "per_table"}
-                onChange={onInput}
-              />
-              {" "}One table per stage
+            <label className="flow-label" htmlFor="minio-secret-key">
+              Secret key
+              <input id="minio-secret-key" name="secret-key" type="password" className="flow-input" value={draft.secretKey} onChange={onInput} autoComplete="new-password" />
             </label>
-            <label htmlFor="db-shared-table">
-              <input
-                id="db-shared-table"
-                type="radio"
-                name="db-layout"
-                value="shared_table"
-                checked={draft.dbLayout === "shared_table"}
-                onChange={onInput}
-              />
-              {" "}One table for every stage
+            <label className="flow-label" htmlFor="minio-bucket">
+              Bucket
+              <input id="minio-bucket" name="bucket" className="flow-input" value={draft.bucket} onChange={onInput} />
             </label>
-          </fieldset>
-          {draft.dbLayout === "shared_table" ? (
-            <>
-              <label className="flow-label" htmlFor="shared-table">
-                Table
-                <input id="shared-table" name="shared-table" className="flow-input" value={draft.sharedTable} onChange={onInput} />
-              </label>
-              <label className="flow-label" htmlFor="stage-column">
-                Stage column
-                <input id="stage-column" name="stage-column" className="flow-input" value={draft.stageColumn} onChange={onInput} />
-              </label>
-              <p className="flow-note">Rows for a stage are the ones whose stage column equals that stage name.</p>
-            </>
-          ) : stageNames.length > 0 ? (
-            <>
-              <p className="flow-note">Type the table that holds each stage. Names can differ from the stage name.</p>
-              {stageNames.map((stage) => (
-                <StageTableField
-                  key={stage}
-                  stage={stage}
-                  value={draft.tables[stage] ?? stage}
-                  onInput={onInput}
-                />
-              ))}
-            </>
-          ) : (
-            <p className="flow-note">Each stage table uses the stage name. Rename the tables here after the pipeline is registered.</p>
-          )}
-        </>
-      )}
-      {stageNames.length > 0 ? (
-        <ul className="flow-note">
-          {stageNames.map((stage) => (
-            <li key={stage}>
-              <span className="mono">{stage}</span>
-              {" → "}
-              <span className="mono">
-                {draft.kind === "database"
-                  ? databasePreview(draft.dbLayout, draft.sharedTable, draft.stageColumn, draft.tables[stage] ?? stage, stage)
-                  : previewTarget(draft.kind, draft.bucket, locationFor(draft.kind, draft.layout, draft.folder, stage))}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="flow-note">Stage locations are filled in when analysis finishes.</p>
-      )}
-    </div>
+            <label className="flow-check" htmlFor="minio-secure">
+              <input id="minio-secure" name="minio-secure" type="checkbox" checked={draft.secure} onChange={onInput} />
+              Use HTTPS
+            </label>
+          </div>
+        ) : null}
+        {draft.kind === "postgres" ? (
+          <div className="flow-grid-2">
+            <label className="flow-label" htmlFor="pg-host">
+              Host
+              <input id="pg-host" name="host" className="flow-input" value={draft.host} onChange={onInput} autoComplete="off" />
+            </label>
+            <label className="flow-label" htmlFor="pg-port">
+              Port
+              <input id="pg-port" name="port" className="flow-input" inputMode="numeric" value={draft.port} onChange={onInput} />
+            </label>
+            <label className="flow-label" htmlFor="pg-database">
+              Database
+              <input id="pg-database" name="database" className="flow-input" value={draft.database} onChange={onInput} autoComplete="off" />
+            </label>
+            <label className="flow-label" htmlFor="pg-schema">
+              Schema
+              <input id="pg-schema" name="db-schema" className="flow-input" value={draft.dbSchema} onChange={onInput} />
+            </label>
+            <label className="flow-label" htmlFor="pg-username">
+              Username
+              <input id="pg-username" name="username" className="flow-input" value={draft.username} onChange={onInput} autoComplete="off" />
+            </label>
+            <label className="flow-label" htmlFor="pg-password">
+              Password
+              <input id="pg-password" name="password" type="password" className="flow-input" value={draft.password} onChange={onInput} autoComplete="new-password" />
+            </label>
+          </div>
+        ) : null}
+      </div>
+      <div className="flow-block">
+        <h3 className="flow-block-title">{draft.kind === "minio" ? "Stage folders" : "Stage tables"}</h3>
+        {draft.kind === "minio" ? (
+          <>
+            <label className="flow-label" htmlFor="output-folder">
+              Folder
+              <input id="output-folder" name="folder" className="flow-input" value={draft.folder} onChange={onInput} />
+            </label>
+            <fieldset className="flow-fieldset">
+              <legend className="flow-label">Layout</legend>
+              <div className="flow-choice">
+                <label htmlFor="layout-subfolder">
+                  <input id="layout-subfolder" type="radio" name="output-layout" value="subfolder" checked={draft.layout === "subfolder"} onChange={onInput} />
+                  {" "}One subfolder per stage
+                </label>
+                <label htmlFor="layout-single">
+                  <input id="layout-single" type="radio" name="output-layout" value="single" checked={draft.layout === "single"} onChange={onInput} />
+                  {" "}One folder for every stage
+                </label>
+              </div>
+            </fieldset>
+          </>
+        ) : (
+          <>
+            <fieldset className="flow-fieldset">
+              <legend className="flow-label">How tables are split</legend>
+              <div className="flow-choice">
+                <label htmlFor="db-per-table">
+                  <input id="db-per-table" type="radio" name="db-layout" value="per_table" checked={draft.dbLayout === "per_table"} onChange={onInput} />
+                  {" "}One table per stage
+                </label>
+                <label htmlFor="db-shared-table">
+                  <input id="db-shared-table" type="radio" name="db-layout" value="shared_table" checked={draft.dbLayout === "shared_table"} onChange={onInput} />
+                  {" "}One table for every stage
+                </label>
+              </div>
+            </fieldset>
+            {draft.dbLayout === "shared_table" ? (
+              <div className="flow-grid-2">
+                <label className="flow-label" htmlFor="shared-table">
+                  Table
+                  <input id="shared-table" name="shared-table" className="flow-input" value={draft.sharedTable} onChange={onInput} />
+                </label>
+                <label className="flow-label" htmlFor="stage-column">
+                  Stage column
+                  <input id="stage-column" name="stage-column" className="flow-input" value={draft.stageColumn} onChange={onInput} />
+                </label>
+              </div>
+            ) : stageNames.length > 0 ? (
+              <div className="flow-grid-2">
+                {stageNames.map((stage) => (
+                  <StageTableField key={stage} stage={stage} value={draft.tables[stage] ?? stage} onInput={onInput} />
+                ))}
+              </div>
+            ) : (
+              <p className="flow-note">Stage names become the table names. You can rename them after analysis.</p>
+            )}
+          </>
+        )}
+        {stageNames.length > 0 ? (
+          <ul className="flow-preview">
+            {stageNames.map((stage) => (
+              <li key={stage}>
+                <span>{stage}</span>
+                <span className="mono">
+                  {draft.kind === "minio"
+                    ? previewTarget(draft.bucket, locationFor(draft.layout, draft.folder, stage))
+                    : databasePreview(draft.dbLayout, draft.sharedTable, draft.stageColumn, draft.tables[stage] ?? stage, stage)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    </>
   )
 }
 
@@ -723,7 +763,7 @@ function GuaranteesPanel({
   )
 }
 
-type StoreKind = "minio" | "database"
+type StoreKind = "minio" | "postgres"
 type DbLayout = "per_table" | "shared_table"
 type FolderLayout = "subfolder" | "single"
 
@@ -734,7 +774,17 @@ interface OutputDraft {
   endpoint: string
   bucket: string
   secure: boolean
-  dsnEnv: string
+  host: string
+  port: string
+  database: string
+  username: string
+  password: string
+  dbSchema: string
+  accessKey: string
+  secretKey: string
+  httpPath: string
+  accessToken: string
+  catalog: string
   dbLayout: DbLayout
   sharedTable: string
   stageColumn: string
@@ -749,7 +799,17 @@ function emptyOutputDraft(): OutputDraft {
     endpoint: "http://localhost:9000",
     bucket: "demo",
     secure: false,
-    dsnEnv: "STAGE_DATABASE_URL",
+    host: "postgres",
+    port: "5432",
+    database: "teleguard",
+    username: "teleguard",
+    password: "",
+    dbSchema: "public",
+    accessKey: "",
+    secretKey: "",
+    httpPath: "",
+    accessToken: "",
+    catalog: "",
     dbLayout: "per_table",
     sharedTable: "",
     stageColumn: "stage",
@@ -757,19 +817,35 @@ function emptyOutputDraft(): OutputDraft {
   }
 }
 
+function connectorKind(savedType: string | undefined): StoreKind {
+  if (savedType === "postgres" || savedType === "database") return "postgres"
+  return "minio"
+}
+
 function outputDraftFromDetail(detail: CodeOnboardDetail): OutputDraft {
   const saved = detail.output_store
   const inferred = inferLayout(saved)
   const names = stageNamesFor(detail)
   const dbLayout = saved?.db_layout === "shared_table" ? "shared_table" : "per_table"
+  const blank = emptyOutputDraft()
   return {
-    kind: saved?.type === "database" ? "database" : "minio",
+    kind: connectorKind(saved?.type),
     layout: inferred.layout,
     folder: inferred.folder,
-    endpoint: saved?.endpoint || "http://localhost:9000",
-    bucket: saved?.bucket || "demo",
+    endpoint: saved?.endpoint || blank.endpoint,
+    bucket: saved?.bucket || blank.bucket,
     secure: saved?.secure ?? false,
-    dsnEnv: saved?.dsn_env || "STAGE_DATABASE_URL",
+    host: saved?.host || blank.host,
+    port: String(saved?.port || blank.port),
+    database: saved?.database || blank.database,
+    username: saved?.username || blank.username,
+    password: saved?.password || "",
+    dbSchema: saved?.db_schema || blank.dbSchema,
+    accessKey: saved?.access_key || "",
+    secretKey: saved?.secret_key || "",
+    httpPath: saved?.http_path || "",
+    accessToken: saved?.access_token || "",
+    catalog: saved?.catalog || "",
     dbLayout,
     sharedTable: dbLayout === "shared_table" ? (saved?.stages?.[0]?.location ?? "") : "",
     stageColumn: saved?.stage_column || "stage",
@@ -813,15 +889,27 @@ function registrationRequest(
 }
 
 function outputRequest(draft: OutputDraft, stages: string[]): OutputStoreRequest {
+  const port = Number(draft.port)
   return {
     kind: draft.kind,
     endpoint: draft.endpoint.trim(),
     bucket: draft.bucket.trim(),
     prefix: draft.kind === "minio" ? draft.folder.trim().replace(/^\/+|\/+$/g, "") : "",
     secure: draft.secure,
-    dsn_env: draft.dsnEnv.trim() || "STAGE_DATABASE_URL",
-    db_layout: draft.kind === "database" ? draft.dbLayout : "",
-    stage_column: draft.kind === "database" && draft.dbLayout === "shared_table" ? draft.stageColumn.trim() : "",
+    dsn_env: "STAGE_DATABASE_URL",
+    db_layout: draft.kind === "minio" ? "" : draft.dbLayout,
+    stage_column: draft.kind !== "minio" && draft.dbLayout === "shared_table" ? draft.stageColumn.trim() : "",
+    host: draft.host.trim(),
+    port: Number.isInteger(port) ? port : 5432,
+    database: draft.database.trim(),
+    username: draft.username.trim(),
+    password: draft.password,
+    db_schema: draft.dbSchema.trim(),
+    access_key: draft.accessKey,
+    secret_key: draft.secretKey,
+    http_path: draft.httpPath.trim(),
+    access_token: draft.accessToken,
+    catalog: draft.catalog.trim(),
     stages: stages.map((stage) => ({
       stage,
       location: stageLocation(draft.kind, draft.layout, draft.folder, draft.dbLayout, draft.sharedTable, draft.tables, stage),
@@ -832,11 +920,21 @@ function outputRequest(draft: OutputDraft, stages: string[]): OutputStoreRequest
 function validateOutput(draft: OutputDraft, stageNames: string[], editing: boolean): string {
   if (draft.kind === "minio") {
     if (!draft.endpoint.trim()) return "Endpoint is required."
+    if (!draft.accessKey.trim()) return "Access key is required."
+    if (!draft.secretKey) return "Secret key is required."
     if (!draft.bucket.trim()) return "Bucket is required."
     if (!draft.folder.trim()) return "Folder is required."
     return ""
   }
-  if (!draft.dsnEnv.trim()) return "Database URL env var is required."
+  if (draft.kind === "postgres") {
+    if (!draft.host.trim()) return "Host is required."
+    if (!/^\d+$/.test(draft.port.trim()) || Number(draft.port) < 1 || Number(draft.port) > 65535) {
+      return "Port must be a number from 1 to 65535."
+    }
+    if (!draft.database.trim()) return "Database is required."
+    if (!draft.username.trim()) return "Username is required."
+    if (!draft.password) return "Password is required."
+  }
   if (draft.dbLayout === "shared_table") {
     if (!draft.sharedTable.trim()) return "Table is required."
     if (!draft.stageColumn.trim()) return "Stage column is required."
@@ -851,7 +949,7 @@ function validateOutput(draft: OutputDraft, stageNames: string[], editing: boole
 
 function inferLayout(store: CodeOnboardDetail["output_store"]): { layout: FolderLayout; folder: string } {
   const stages = store?.stages ?? []
-  if (store?.type === "database") {
+  if (store?.type === "database" || store?.type === "postgres") {
     const sample = stages[0]?.location ?? ""
     const dot = sample.lastIndexOf(".")
     return { layout: "subfolder", folder: dot >= 0 ? sample.slice(0, dot) : "" }
@@ -876,15 +974,14 @@ function sharedFolder(
   return same ? folder : null
 }
 
-function locationFor(kind: "minio" | "database", layout: FolderLayout, folder: string, stage: string): string {
+function locationFor(layout: FolderLayout, folder: string, stage: string): string {
   const base = folder.trim().replace(/^\/+|\/+$/g, "")
-  if (kind === "database") return stage
   if (!base) return layout === "subfolder" ? `${stage}/` : `${stage}*`
   return layout === "subfolder" ? `${base}/${stage}/` : `${base}/${stage}*`
 }
 
 function stageLocation(
-  kind: "minio" | "database",
+  kind: StoreKind,
   layout: FolderLayout,
   folder: string,
   dbLayout: "per_table" | "shared_table",
@@ -892,10 +989,10 @@ function stageLocation(
   tables: Record<string, string>,
   stage: string,
 ): string {
-  if (kind === "database") {
+  if (kind !== "minio") {
     return dbLayout === "shared_table" ? sharedTable.trim() : (tables[stage] ?? stage).trim()
   }
-  return locationFor(kind, layout, folder, stage)
+  return locationFor(layout, folder, stage)
 }
 
 function databasePreview(
@@ -913,10 +1010,9 @@ function databasePreview(
   return `table ${table.trim() || stage}`
 }
 
-function previewTarget(kind: "minio" | "database", bucket: string, location: string): string {
+function previewTarget(bucket: string, location: string): string {
   const value = location.trim()
   if (!value) return "enter a location"
-  if (kind === "database") return `table ${value}`
   return `s3://${bucket.trim() || "bucket"}/${value.replace(/^\//, "")}`
 }
 

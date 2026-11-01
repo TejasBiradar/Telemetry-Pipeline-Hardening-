@@ -152,3 +152,22 @@ Raw client event lakes stay in the client’s systems; we store monitoring metad
 ## 7. Technology
 
 Python · pandas · pydantic · networkx · sqlglot · numpy / scipy · PyYAML · PostgreSQL · FastAPI · React (Vite) · pytest · ruff · mypy · Docker Compose · CI
+
+## 8. Production architecture
+
+Onboarding, the first chapter: `docs/adr/0003-client-onboarding.md` (proposed). A pipeline stays inactive until a client exists, one definition has been analyzed, a person has confirmed a stage, and a collector mode is chosen. Only then is a token issued.
+
+Runtime decision record: `docs/adr/0002-production-data-plane.md` (proposed). It is the following chapter, not a substitute for onboarding.
+
+The client sends a **profile**: row count, schema, and per-column counts and histograms. Driftline compares that profile with the confirmed contract and the frozen baseline, and decides pass or fail. Stage files do not enter Driftline. Bucket passwords do not either.
+
+Any of these collectors can build the same profile, inside the client boundary:
+
+- a library call in the task, when they will change the task
+- a function in their account, triggered when the object is created, when they will not change the task
+- SQL in their warehouse, when the stage is already a table
+- the table manifest, when Iceberg or Delta already stored the stats
+
+Ingest and evaluation are separate. A queue sits between them. A read grant remains the exception for a client who will run none of the collectors.
+
+The Compose stack in this repo is the prototype: shared object-store keys and a full-file load.

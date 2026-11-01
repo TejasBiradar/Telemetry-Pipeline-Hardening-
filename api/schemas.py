@@ -165,7 +165,7 @@ class StageLocationIn(BaseModel):
 
 
 class MinioOutputStoreIn(BaseModel):
-    """MinIO or database destinations. Each stage carries its own location."""
+    """Saved connector. Each stage carries its own location."""
 
     kind: str = "minio"
     endpoint: str = ""
@@ -177,6 +177,17 @@ class MinioOutputStoreIn(BaseModel):
     dsn_env: str = "STAGE_DATABASE_URL"
     db_layout: str = ""
     stage_column: str = ""
+    host: str = ""
+    port: int = 5432
+    database: str = ""
+    username: str = ""
+    password: str = ""
+    db_schema: str = ""
+    access_key: str = ""
+    secret_key: str = ""
+    http_path: str = ""
+    access_token: str = ""
+    catalog: str = ""
     stages: list[StageLocationIn] = []
 
 

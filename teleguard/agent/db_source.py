@@ -1,4 +1,4 @@
-"""Read one stage table. The connection string stays in the environment."""
+"""Read one stage table from the saved Postgres connector, or the named env var."""
 
 from __future__ import annotations
 
@@ -23,9 +23,9 @@ def read_table(store: MinioOutputStore, table: str, *, stage: str | None = None)
     import psycopg
 
     name = validate_table_name(table)
-    dsn = os.environ.get(store.dsn_env, "")
+    dsn = store.postgres_dsn() or os.environ.get(store.dsn_env, "")
     if not dsn:
-        raise RuntimeError(f"set {store.dsn_env} for the stage database")
+        raise RuntimeError(f"set the Postgres host, user, and database, or {store.dsn_env}")
     quoted = ".".join(f'"{part}"' for part in name.split("."))
     params: tuple[str, ...] = ()
     if store.db_layout == "shared_table":
