@@ -80,6 +80,8 @@ Every agent-generated change is logged here before it merges. The panel asks for
 
 | 38 | 2026-10-31 | — | Postgres runtime store | When `STAGE_DATABASE_URL` is set, registration, stages, guarantees, review decisions, notify contact, agent runs, and check alerts are written to Postgres (`db/migrations/002_runtime_store.sql`). Existing `data/onboarded` JSON is copied in once. A temporary directory in tests still uses files so CI has no database. | _pending (team)_ | — | The `pipelines` table in `001_schema_n_pipelines.sql` is not applied and does not match the UUID registration record, so the live tables are separate. | — |
 
+| 39 | 2026-10-31 | — | Separate Driftline DB | Same Postgres container, two databases: `teleguard` (Shipment Ledger stages via `STAGE_DATABASE_URL`) and `driftline` (registry/output config/decisions/runs/alerts via `DRIFTLINE_DATABASE_URL`). Init script `db/init/00_create_driftline_db.sql`; `pg_store` prefers `DRIFTLINE_DATABASE_URL`. | _pending (team)_ | — | — | — |
+
 ## Categories to track
 - **Confidently wrong**: the agent stated something about the legacy code that the evidence didn't support
 - **Scope creep**: changed files outside the task (especially `legacy/`)

@@ -1,7 +1,8 @@
 """Postgres store for registration, review decisions, and agent results.
 
-Used when ``STAGE_DATABASE_URL`` or ``DATABASE_URL`` is set and the caller is
-writing the default store. Tests that pass a temporary directory keep files.
+Prefer ``DRIFTLINE_DATABASE_URL`` (dedicated Driftline DB). Fall back to
+``DATABASE_URL``, then ``STAGE_DATABASE_URL`` for older single-DB demos.
+Tests that pass a temporary directory keep files.
 """
 
 from __future__ import annotations
@@ -20,8 +21,12 @@ _legacy_imported = False
 
 
 def database_url() -> str:
-    """DSN for the demo database. Empty when the process should keep local files."""
-    return os.environ.get("STAGE_DATABASE_URL", "").strip() or os.environ.get("DATABASE_URL", "").strip()
+    """DSN for Driftline metadata. Empty when the process should keep local files."""
+    for key in ("DRIFTLINE_DATABASE_URL", "DATABASE_URL", "STAGE_DATABASE_URL"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value
+    return ""
 
 
 def uses_database(store_root: Path, default_store: Path) -> bool:
@@ -34,7 +39,9 @@ def uses_database(store_root: Path, default_store: Path) -> bool:
 def connect() -> psycopg.Connection[tuple[Any, ...]]:
     dsn = database_url()
     if not dsn:
-        raise RuntimeError("STAGE_DATABASE_URL is not set")
+        raise RuntimeError(
+            "DRIFTLINE_DATABASE_URL (or DATABASE_URL / STAGE_DATABASE_URL) is not set"
+        )
     conn = psycopg.connect(dsn)
     _ensure_schema(conn)
     return conn

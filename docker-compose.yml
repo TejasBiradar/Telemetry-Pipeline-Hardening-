@@ -12,11 +12,16 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-teleguard}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teleguard}
+      # Default DB holds Shipment Ledger stage tables. Init also creates `driftline`
+      # for registry / decisions / agent results (see db/init/).
       POSTGRES_DB: ${POSTGRES_DB:-teleguard}
     ports:
-      - "5432:5432"
+      # Host 5433 avoids clashing with other local Postgres on 5432.
+      # Containers still reach this DB at postgres:5432 on the compose network.
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -65,11 +70,14 @@ services:
       context: .
       dockerfile: Dockerfile.detection
     ports:
-      - "8080:80"
+      - "8082:80"
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      # Client stage outputs (Shipment Ledger tables) stay in `teleguard`.
       STAGE_DATABASE_URL: postgresql://${POSTGRES_USER:-teleguard}:${POSTGRES_PASSWORD:-teleguard}@postgres:5432/${POSTGRES_DB:-teleguard}
+      # Driftline registry, MinIO/output config, decisions, runs, alerts.
+      DRIFTLINE_DATABASE_URL: postgresql://${POSTGRES_USER:-teleguard}:${POSTGRES_PASSWORD:-teleguard}@postgres:5432/driftline
     volumes:
       - onboard_data:/app/data
       - ./pipelines:/app/pipelines:ro

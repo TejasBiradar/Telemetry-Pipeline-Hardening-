@@ -1,5 +1,7 @@
--- Live registration, review, and agent results.
--- Applied by teleguard.pg_store when STAGE_DATABASE_URL or DATABASE_URL is set.
+-- Live registration, review, and agent results (Driftline control/monitoring DB).
+-- Applied by teleguard.pg_store when DRIFTLINE_DATABASE_URL (or DATABASE_URL /
+-- STAGE_DATABASE_URL) is set. Prefer a dedicated database named `driftline` so
+-- Shipment Ledger stage tables in `teleguard` stay separate.
 -- Names do not overlap db/migrations/001_schema_n_pipelines.sql.
 
 CREATE TABLE IF NOT EXISTS registered_pipelines (

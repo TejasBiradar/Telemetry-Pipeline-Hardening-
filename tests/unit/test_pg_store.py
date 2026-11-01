@@ -11,13 +11,26 @@ from teleguard.pg_store import append_agent_run, save_registration
 
 
 def test_registration_stages_guarantees_and_alerts_land_in_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
-    dsn = "postgresql://teleguard:teleguard@localhost:5432/teleguard"
-    try:
-        with psycopg.connect(dsn, connect_timeout=3) as conn:
-            conn.execute("SELECT 1")
-    except psycopg.OperationalError:
-        pytest.skip("Postgres is not running at STAGE_DATABASE_URL")
-    monkeypatch.setenv("STAGE_DATABASE_URL", dsn)
+    # Prefer dedicated Driftline DB on compose host port 5433; fall back to 5432.
+    candidates = (
+        "postgresql://teleguard:teleguard@localhost:5433/driftline",
+        "postgresql://teleguard:teleguard@localhost:5432/driftline",
+        "postgresql://teleguard:teleguard@localhost:5432/teleguard",
+    )
+    dsn = ""
+    for candidate in candidates:
+        try:
+            with psycopg.connect(candidate, connect_timeout=3) as conn:
+                conn.execute("SELECT 1")
+            dsn = candidate
+            break
+        except psycopg.OperationalError:
+            continue
+    if not dsn:
+        pytest.skip("Postgres Driftline DB is not reachable")
+    monkeypatch.setenv("DRIFTLINE_DATABASE_URL", dsn)
+    monkeypatch.delenv("STAGE_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     pipeline_id = str(uuid4())
     guarantee_id = "required_field:price:pipeline.py:10"
     try:
