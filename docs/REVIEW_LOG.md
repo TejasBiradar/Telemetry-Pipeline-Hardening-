@@ -86,6 +86,10 @@ Every agent-generated change is logged here before it merges. The panel asks for
 
 | 41 | 2026-10-31 | — | Connector scope | Databricks is no longer a connector. The form offers MinIO and Postgres. A Databricks warehouse stays future scope. | _pending (team)_ | — | The SQL-warehouse reader and its form were built ahead of the decision. Removed from the product path so the demo does not offer a connector that is not in scope. | — |
 
+| 42 | 2026-11-01 | — | Source preview | The Source connector card no longer lists example paths such as `s3://demo/landed/`. The folder, layout, and table fields remain. | _pending (team)_ | — | Those lines were a preview of the saved location, and they read as sample data on the registration page. | — |
+
+| 43 | 2026-11-02 | — | Connector summary | After Save connector, Source shows a read-only facts block (system, connection, layout) like Registration. No edit after save. Per-stage path rows were dropped; layout is Subfolder per stage or File per stage. | _pending (team)_ | — | The connector stayed as an editable form after save, so saved settings were not visible the same way as registration. Listing every stage path after save was noise. | — |
+
 ## Categories to track
 - **Confidently wrong**: the agent stated something about the legacy code that the evidence didn't support
 - **Scope creep**: changed files outside the task (especially `legacy/`)

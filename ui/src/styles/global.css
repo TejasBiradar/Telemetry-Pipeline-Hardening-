@@ -306,10 +306,6 @@ select {
   .flow-facts {
     grid-template-columns: 1fr;
   }
-  .flow-preview li {
-    flex-direction: column;
-    gap: 2px;
-  }
   .page {
     padding: 20px 18px 48px;
   }
@@ -607,23 +603,6 @@ select {
   min-height: 40px;
   font-weight: 600;
   color: var(--text);
-}
-
-.flow-preview {
-  list-style: none;
-  margin: 0;
-  padding: 10px 12px;
-  display: grid;
-  gap: 8px;
-  background: var(--surface-2);
-  border-radius: var(--radius-sm);
-}
-
-.flow-preview li {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  font-size: 13px;
 }
 
 .flow-actions {

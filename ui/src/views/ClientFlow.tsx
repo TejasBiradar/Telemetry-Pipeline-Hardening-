@@ -6,6 +6,7 @@ import {
   type AgentRun,
   type CodeOnboardDetail,
   type CodeOnboardRequest,
+  type MinioStore,
   type OutputStoreRequest,
 } from "../api/client"
 import { PipelineGraph } from "../components/PipelineGraph"
@@ -157,6 +158,7 @@ function PipelineForm({
   )
   const [outputError, setOutputError] = useState("")
   const stageNames = stageNamesFor(record)
+  const connectorSaved = Boolean(record?.output_store)
 
   const register = useMutation({
     mutationFn: (body: CodeOnboardRequest) => api.createCodeOnboard(body),
@@ -171,8 +173,8 @@ function PipelineForm({
       if (!record) throw new Error("Register the pipeline first")
       await api.setOutputStore(record.pipeline_id, outputRequest(output, stageNamesFor(record)))
     },
-    onSuccess: () => {
-      void onSaved()
+    onSuccess: async () => {
+      await onSaved()
     },
   })
 
@@ -371,11 +373,17 @@ function PipelineForm({
           <p className="flow-step">2 · Connector</p>
           <div className="card-title">Where stage output is read</div>
           <p className="card-desc">
-            Saved on this pipeline. Pick one system, then name the folder or table for each stage.
+            {connectorSaved
+              ? "Saved on this pipeline. The agent reads stage output from this connection."
+              : "Saved on this pipeline. Pick one system, then name the folder or table for each stage."}
           </p>
         </div>
       </header>
-      {locked ? (
+      {!locked ? (
+        <p className="flow-note">Register the pipeline first. The connector form opens on this pipeline after analysis.</p>
+      ) : connectorSaved && record?.output_store ? (
+        <ConnectorFacts store={record.output_store} draft={output} />
+      ) : (
         <form className="flow-form" onSubmit={onSaveConnector}>
           <OutputSettings draft={output} stageNames={stageNames} onChange={setOutput} />
           {outputError ? <p className="flow-error">{outputError}</p> : null}
@@ -384,14 +392,99 @@ function PipelineForm({
             <button type="submit" className="btn btn-primary" disabled={saveConnector.isPending}>
               {saveConnector.isPending ? "Saving…" : "Save connector"}
             </button>
-            {saveConnector.isSuccess ? <p className="flow-saved">Connector saved.</p> : null}
           </div>
         </form>
-      ) : (
-        <p className="flow-note">Register the pipeline first. The connector form opens on this pipeline after analysis.</p>
       )}
     </section>
     </div>
+  )
+}
+
+function ConnectorFacts({
+  store,
+  draft,
+}: {
+  store: MinioStore
+  draft: OutputDraft
+}) {
+  const kind = connectorKind(store.type)
+
+  return (
+    <dl className="flow-facts">
+      <div>
+        <dt>System</dt>
+        <dd>{kind === "postgres" ? "Postgres" : "MinIO"}</dd>
+      </div>
+      {kind === "minio" ? (
+        <>
+          <div>
+            <dt>Endpoint</dt>
+            <dd className="mono">{store.endpoint || "—"}</dd>
+          </div>
+          <div>
+            <dt>Bucket</dt>
+            <dd className="mono">{store.bucket || "—"}</dd>
+          </div>
+          <div>
+            <dt>Folder</dt>
+            <dd className="mono">{store.prefix || draft.folder || "—"}</dd>
+          </div>
+          <div>
+            <dt>Layout</dt>
+            <dd>{draft.layout === "single" ? "File per stage" : "Subfolder per stage"}</dd>
+          </div>
+          <div>
+            <dt>HTTPS</dt>
+            <dd>{store.secure ? "On" : "Off"}</dd>
+          </div>
+          <div>
+            <dt>Access key</dt>
+            <dd>{store.access_key || draft.accessKey ? "Set" : "Not set"}</dd>
+          </div>
+          <div>
+            <dt>Secret key</dt>
+            <dd>{store.secret_key || draft.secretKey ? "Set" : "Not set"}</dd>
+          </div>
+        </>
+      ) : (
+        <>
+          <div>
+            <dt>Host</dt>
+            <dd className="mono">{store.host || "—"}</dd>
+          </div>
+          <div>
+            <dt>Port</dt>
+            <dd className="mono">{String(store.port ?? "—")}</dd>
+          </div>
+          <div>
+            <dt>Database</dt>
+            <dd className="mono">{store.database || "—"}</dd>
+          </div>
+          <div>
+            <dt>Schema</dt>
+            <dd className="mono">{store.db_schema || "—"}</dd>
+          </div>
+          <div>
+            <dt>Username</dt>
+            <dd className="mono">{store.username || "—"}</dd>
+          </div>
+          <div>
+            <dt>Password</dt>
+            <dd>{store.password || draft.password ? "Set" : "Not set"}</dd>
+          </div>
+          <div>
+            <dt>Layout</dt>
+            <dd>{store.db_layout === "shared_table" ? "Shared table" : "One table per stage"}</dd>
+          </div>
+          {store.db_layout === "shared_table" ? (
+            <div>
+              <dt>Stage column</dt>
+              <dd className="mono">{store.stage_column || "—"}</dd>
+            </div>
+          ) : null}
+        </>
+      )}
+    </dl>
   )
 }
 
@@ -578,20 +671,6 @@ function OutputSettings({
             )}
           </>
         )}
-        {stageNames.length > 0 ? (
-          <ul className="flow-preview">
-            {stageNames.map((stage) => (
-              <li key={stage}>
-                <span>{stage}</span>
-                <span className="mono">
-                  {draft.kind === "minio"
-                    ? previewTarget(draft.bucket, locationFor(draft.layout, draft.folder, stage))
-                    : databasePreview(draft.dbLayout, draft.sharedTable, draft.stageColumn, draft.tables[stage] ?? stage, stage)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
       </div>
     </>
   )
@@ -993,27 +1072,6 @@ function stageLocation(
     return dbLayout === "shared_table" ? sharedTable.trim() : (tables[stage] ?? stage).trim()
   }
   return locationFor(layout, folder, stage)
-}
-
-function databasePreview(
-  dbLayout: "per_table" | "shared_table",
-  sharedTable: string,
-  stageColumn: string,
-  table: string,
-  stage: string,
-): string {
-  if (dbLayout === "shared_table") {
-    const name = sharedTable.trim() || "table"
-    const column = stageColumn.trim() || "stage"
-    return `${name} where ${column} = ${stage}`
-  }
-  return `table ${table.trim() || stage}`
-}
-
-function previewTarget(bucket: string, location: string): string {
-  const value = location.trim()
-  if (!value) return "enter a location"
-  return `s3://${bucket.trim() || "bucket"}/${value.replace(/^\//, "")}`
 }
 
 function ResultsPanel({
