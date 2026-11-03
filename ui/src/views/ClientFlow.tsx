@@ -9,6 +9,7 @@ import {
   type MinioStore,
   type OutputStoreRequest,
 } from "../api/client"
+import { ConfirmDialog } from "../components/ConfirmDialog"
 import { PipelineGraph } from "../components/PipelineGraph"
 import { StatusPill } from "../components/StatusPill"
 import { toneForStatus } from "../components/statusTone"
@@ -68,6 +69,11 @@ export function ClientFlow() {
             navigate({ pathname: "/source", search: `?id=${id}`, hash: "connector" })
           }}
           onSaved={() => refresh(pipelineId)}
+          onDeleted={async () => {
+            await queryClient.invalidateQueries({ queryKey: ["code-onboard-list"] })
+            await queryClient.removeQueries({ queryKey: ["code-onboard", pipelineId] })
+            navigate({ pathname: "/source" })
+          }}
         />
       ) : null}
       {page === "source" ? null : (
@@ -99,6 +105,7 @@ export function ClientFlow() {
         {page === "results" && pipelineId ? (
           <ResultsPanel
             runs={results.data}
+            confirmedStages={detail.data?.confirmed_stages ?? []}
             loading={results.isLoading}
             error={results.error}
           />
@@ -126,7 +133,7 @@ function GraphPanel({
       <div>
         <div className="card-title">How this pipeline is built</div>
         <p className="card-desc">
-          {detail.name} · {detail.adapter}. Each node is a stage. Select one to see its fields.
+          {detail.name}. Stages and fields are from this registration&apos;s analysis — not a fixed demo graph.
         </p>
       </div>
       <PipelineGraph graph={detail.graph} />
@@ -138,10 +145,12 @@ function PipelineForm({
   detail,
   onCreated,
   onSaved,
+  onDeleted,
 }: {
   detail: CodeOnboardDetail | undefined
   onCreated: (id: string) => void
   onSaved: () => Promise<void>
+  onDeleted: () => Promise<void>
 }) {
   const [registered, setRegistered] = useState<CodeOnboardDetail | null>(null)
   const record = detail ?? registered ?? undefined
@@ -157,14 +166,44 @@ function PipelineForm({
     detail ? outputDraftFromDetail(detail) : emptyOutputDraft(),
   )
   const [outputError, setOutputError] = useState("")
+  const [editingRegistration, setEditingRegistration] = useState(() => !detail)
+  const [editingConnector, setEditingConnector] = useState(() => !detail?.output_store)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const stageNames = stageNamesFor(record)
   const connectorSaved = Boolean(record?.output_store)
+  const showRegistrationSummary = locked && !editingRegistration
+  const showConnectorSummary = locked && connectorSaved && !editingConnector && Boolean(record?.output_store)
 
   const register = useMutation({
-    mutationFn: (body: CodeOnboardRequest) => api.createCodeOnboard(body),
-    onSuccess: (saved) => {
+    mutationFn: async (body: CodeOnboardRequest) => {
+      if (record?.pipeline_id) {
+        return api.updateCodeOnboard(record.pipeline_id, body)
+      }
+      return api.createCodeOnboard(body)
+    },
+    onSuccess: async (saved) => {
       setRegistered(saved)
-      onCreated(saved.pipeline_id)
+      setEditingRegistration(false)
+      // Keep the connector summary closed when the store was preserved on re-analyze.
+      setEditingConnector(!saved.output_store)
+      if (saved.output_store) {
+        setOutput(outputDraftFromDetail(saved))
+      }
+      if (record?.pipeline_id && record.pipeline_id === saved.pipeline_id) {
+        await onSaved()
+      } else {
+        onCreated(saved.pipeline_id)
+      }
+    },
+  })
+
+  const remove = useMutation({
+    mutationFn: async () => {
+      if (!record) throw new Error("No pipeline loaded")
+      await api.deleteCodeOnboard(record.pipeline_id)
+    },
+    onSuccess: () => {
+      void onDeleted()
     },
   })
 
@@ -175,6 +214,7 @@ function PipelineForm({
     },
     onSuccess: async () => {
       await onSaved()
+      setEditingConnector(false)
     },
   })
 
@@ -221,43 +261,77 @@ function PipelineForm({
 
   return (
     <div className="flow-stack">
-    <form className="card flow-form" onSubmit={locked ? preventSubmit : onRegister}>
+    <form className="card flow-form" onSubmit={showRegistrationSummary ? preventSubmit : onRegister}>
       <header className="flow-section-head">
         <div>
           <p className="flow-step">1 · Pipeline</p>
           <div className="card-title">Registration</div>
           <p className="card-desc">
-            {locked
+            {showRegistrationSummary
               ? "The source is analyzed. Stages and guarantees come from this registration."
               : "Name the pipeline and point at its code. Analysis keeps the metadata and drops the clone."}
           </p>
         </div>
       </header>
-      {locked ? (
-        <dl className="flow-facts">
-          <div>
-            <dt>Name</dt>
-            <dd>{name}</dd>
-          </div>
-          <div>
-            <dt>{mode === "git" ? "Repository" : "Folder"}</dt>
-            <dd className="mono">{sourceLabel || "—"}</dd>
-          </div>
-          {mode === "git" ? (
+      {showRegistrationSummary ? (
+        <>
+          <dl className="flow-facts">
             <div>
-              <dt>Branch</dt>
-              <dd className="mono">{gitRef || "HEAD"}</dd>
+              <dt>Name</dt>
+              <dd>{name}</dd>
             </div>
-          ) : null}
-          <div>
-            <dt>Adapter</dt>
-            <dd>{record?.adapter || "—"}</dd>
+            <div>
+              <dt>{mode === "git" ? "Repository" : "Folder"}</dt>
+              <dd className="mono">{sourceLabel || "—"}</dd>
+            </div>
+            {mode === "git" ? (
+              <div>
+                <dt>Branch</dt>
+                <dd className="mono">{gitRef || "HEAD"}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>Pipeline id</dt>
+              <dd className="mono">{record?.pipeline_id}</dd>
+            </div>
+          </dl>
+          <div className="flow-actions">
+            <button type="button" className="btn" onClick={() => setEditingRegistration(true)}>
+              Edit registration
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={remove.isPending}
+              onClick={() => setDeleteOpen(true)}
+            >
+              {remove.isPending ? "Deleting…" : "Delete pipeline"}
+            </button>
           </div>
-          <div>
-            <dt>Pipeline id</dt>
-            <dd className="mono">{record?.pipeline_id}</dd>
-          </div>
-        </dl>
+          {remove.isError ? <p className="flow-error">{errorText(remove.error)}</p> : null}
+          <ConfirmDialog
+            open={deleteOpen}
+            title="Delete pipeline"
+            message={
+              record
+                ? `Delete “${record.name}”? This removes its registration, stage and guarantee decisions, and agent results.`
+                : "Delete this pipeline?"
+            }
+            confirmLabel="Delete pipeline"
+            cancelLabel="Cancel"
+            danger
+            busy={remove.isPending}
+            onCancel={() => {
+              if (!remove.isPending) setDeleteOpen(false)
+            }}
+            onConfirm={() => {
+              if (!record) return
+              remove.mutate(undefined, {
+                onSettled: () => setDeleteOpen(false),
+              })
+            }}
+          />
+        </>
       ) : (
         <>
           <label className="flow-label" htmlFor="pipeline-name">
@@ -359,10 +433,15 @@ function PipelineForm({
             />
           </label>
           {register.isError ? <p className="flow-error">{errorText(register.error)}</p> : null}
-          <div>
+          <div className="flow-actions">
             <button type="submit" className="btn btn-primary" disabled={register.isPending || name.trim().length === 0}>
-              {register.isPending ? "Analyzing…" : "Analyze and register"}
+              {register.isPending ? "Analyzing…" : locked ? "Re-analyze and save" : "Analyze and register"}
             </button>
+            {locked ? (
+              <button type="button" className="btn" onClick={() => setEditingRegistration(false)}>
+                Cancel
+              </button>
+            ) : null}
           </div>
         </>
       )}
@@ -373,7 +452,7 @@ function PipelineForm({
           <p className="flow-step">2 · Connector</p>
           <div className="card-title">Where stage output is read</div>
           <p className="card-desc">
-            {connectorSaved
+            {showConnectorSummary
               ? "Saved on this pipeline. The agent reads stage output from this connection."
               : "Saved on this pipeline. Pick one system, then name the folder or table for each stage."}
           </p>
@@ -381,8 +460,15 @@ function PipelineForm({
       </header>
       {!locked ? (
         <p className="flow-note">Register the pipeline first. The connector form opens on this pipeline after analysis.</p>
-      ) : connectorSaved && record?.output_store ? (
-        <ConnectorFacts store={record.output_store} draft={output} />
+      ) : showConnectorSummary && record?.output_store ? (
+        <>
+          <ConnectorFacts store={record.output_store} draft={output} />
+          <div className="flow-actions">
+            <button type="button" className="btn" onClick={() => setEditingConnector(true)}>
+              Edit connector
+            </button>
+          </div>
+        </>
       ) : (
         <form className="flow-form" onSubmit={onSaveConnector}>
           <OutputSettings draft={output} stageNames={stageNames} onChange={setOutput} />
@@ -392,6 +478,11 @@ function PipelineForm({
             <button type="submit" className="btn btn-primary" disabled={saveConnector.isPending}>
               {saveConnector.isPending ? "Saving…" : "Save connector"}
             </button>
+            {connectorSaved ? (
+              <button type="button" className="btn" onClick={() => setEditingConnector(false)}>
+                Cancel
+              </button>
+            ) : null}
           </div>
         </form>
       )}
@@ -432,10 +523,6 @@ function ConnectorFacts({
           <div>
             <dt>Layout</dt>
             <dd>{draft.layout === "single" ? "File per stage" : "Subfolder per stage"}</dd>
-          </div>
-          <div>
-            <dt>HTTPS</dt>
-            <dd>{store.secure ? "On" : "Off"}</dd>
           </div>
           <div>
             <dt>Access key</dt>
@@ -513,10 +600,6 @@ function OutputSettings({
         onChange({ ...draft, dbLayout: value })
         return
       }
-      if (field === "minio-secure") {
-        onChange({ ...draft, secure: event.currentTarget.checked })
-        return
-      }
       if (field.startsWith("table:")) {
         const stage = field.slice("table:".length)
         onChange({ ...draft, tables: { ...draft.tables, [stage]: value } })
@@ -576,10 +659,6 @@ function OutputSettings({
             <label className="flow-label" htmlFor="minio-bucket">
               Bucket
               <input id="minio-bucket" name="bucket" className="flow-input" value={draft.bucket} onChange={onInput} />
-            </label>
-            <label className="flow-check" htmlFor="minio-secure">
-              <input id="minio-secure" name="minio-secure" type="checkbox" checked={draft.secure} onChange={onInput} />
-              Use HTTPS
             </label>
           </div>
         ) : null}
@@ -728,7 +807,9 @@ function StagesPanel({
     <div style={{ display: "grid", gap: 16 }}>
       <div>
         <div className="card-title">Confirm stages</div>
-        <p className="card-desc">Only confirmed stages are watched. Folder name under MinIO must match the stage name.</p>
+        <p className="card-desc">
+          Stages listed here are from this registration. Only confirmed stages are watched.
+        </p>
       </div>
       <div className="flow-row">
         <button type="button" className="btn" onClick={() => decide.mutate(mapStages(detail.stages, "confirmed"))} disabled={decide.isPending}>
@@ -782,7 +863,7 @@ function GuaranteesPanel({
   error: Error | null
   onChanged: () => Promise<void>
 }) {
-  const decide = useMutation({
+  const decideOne = useMutation({
     mutationFn: (input: { id: string; status: string }) => {
       if (!detail) throw new Error("No pipeline loaded")
       return api.setOnboardGuarantee(detail.pipeline_id, input.id, input.status)
@@ -791,6 +872,16 @@ function GuaranteesPanel({
       void onChanged()
     },
   })
+  const decideMany = useMutation({
+    mutationFn: (decisions: Record<string, string>) => {
+      if (!detail) throw new Error("No pipeline loaded")
+      return api.setGuaranteeDecisions(detail.pipeline_id, decisions)
+    },
+    onSuccess: () => {
+      void onChanged()
+    },
+  })
+  const busy = decideOne.isPending || decideMany.isPending
 
   if (loading) return <p className="flow-note">Loading guarantees…</p>
   if (error) return <p className="flow-error">{errorText(error)}</p>
@@ -800,7 +891,19 @@ function GuaranteesPanel({
     <div style={{ display: "grid", gap: 16 }}>
       <div>
         <div className="card-title">Confirm guarantees</div>
-        <p className="card-desc">Confirmed rules become the checks the agent runs on each new file.</p>
+        <p className="card-desc">
+          Guarantees are the findings from this registration&apos;s analysis. Confirmed rules become the checks the agent runs.
+        </p>
+      </div>
+      <div className="flow-row">
+        <button
+          type="button"
+          className="btn"
+          disabled={busy || detail.findings.length === 0}
+          onClick={() => decideMany.mutate(mapFindings(detail.findings, "confirmed"))}
+        >
+          Confirm all
+        </button>
       </div>
       <div className="table-wrap">
         <table>
@@ -824,10 +927,10 @@ function GuaranteesPanel({
                   <td>{finding.message}</td>
                   <td>
                     <div className="flow-row">
-                      <button type="button" className="btn" disabled={decide.isPending || status === "confirmed"} onClick={() => decide.mutate({ id: finding.id, status: "confirmed" })}>
+                      <button type="button" className="btn" disabled={busy || status === "confirmed"} onClick={() => decideOne.mutate({ id: finding.id, status: "confirmed" })}>
                         Confirm
                       </button>
-                      <button type="button" className="btn" disabled={decide.isPending || status === "rejected"} onClick={() => decide.mutate({ id: finding.id, status: "rejected" })}>
+                      <button type="button" className="btn" disabled={busy || status === "rejected"} onClick={() => decideOne.mutate({ id: finding.id, status: "rejected" })}>
                         Reject
                       </button>
                     </div>
@@ -1076,20 +1179,32 @@ function stageLocation(
 
 function ResultsPanel({
   runs,
+  confirmedStages,
   loading,
   error,
 }: {
   runs: AgentRun[] | undefined
+  confirmedStages: string[]
   loading: boolean
   error: Error | null
 }) {
   if (loading) return <p className="flow-note">Loading results…</p>
   if (error) return <p className="flow-error">{errorText(error)}</p>
-  const rows = [...(runs ?? [])].reverse()
+  const watched = new Set(confirmedStages)
+  const rows = [...(runs ?? [])]
+    .filter((run) => watched.has(run.stage))
+    .reverse()
+  if (confirmedStages.length === 0) {
+    return (
+      <p className="flow-note">
+        Confirm at least one stage before monitoring. Results appear only for confirmed stages, and only for files written after that stage was confirmed.
+      </p>
+    )
+  }
   if (rows.length === 0) {
     return (
       <p className="flow-note">
-        No files checked yet. After stages, guarantees, and output locations are set, the agent reports here within a few seconds of a new file.
+        No files checked yet for the confirmed stages. Changing stage confirm/reject clears prior Results; new files after that show up within a few seconds.
       </p>
     )
   }
@@ -1097,7 +1212,9 @@ function ResultsPanel({
     <div style={{ display: "grid", gap: 16 }}>
       <div>
         <div className="card-title">Live check results</div>
-        <p className="card-desc">Newest first. This list refreshes every 5 seconds.</p>
+        <p className="card-desc">
+          Newest first for confirmed stages only. Files that existed before a stage was confirmed are not backfilled.
+        </p>
       </div>
       <div className="table-wrap">
         <table>
@@ -1132,6 +1249,15 @@ function ResultsPanel({
 function mapStages(stages: string[], status: string): Record<string, string> {
   const decisions: Record<string, string> = {}
   for (const stage of stages) decisions[stage] = status
+  return decisions
+}
+
+function mapFindings(
+  findings: Array<{ id: string }>,
+  status: string,
+): Record<string, string> {
+  const decisions: Record<string, string> = {}
+  for (const finding of findings) decisions[finding.id] = status
   return decisions
 }
 

@@ -129,6 +129,31 @@ def test_empty_directory_gives_empty_graph(tmp_path: Path) -> None:
     assert result.graph.nodes == [] and result.findings == []
 
 
+def test_dataframe_from_literal_record_dicts_writes_columns(tmp_path: Path) -> None:
+    (tmp_path / "load.py").write_text(
+        "import pandas as pd\n\n"
+        "def load(path):\n"
+        "    rows = []\n"
+        "    rows.append({'batch_id': 'b', 'campaign_id': 'c', 'spend_usd': 1})\n"
+        "    return pd.DataFrame(rows)\n"
+    )
+    (tmp_path / "main.py").write_text(
+        "from load import load\n\ndef main(path):\n    return load(path)\n"
+    )
+    result = PythonPandasAdapter(entry="main.main").analyze(tmp_path)
+    written = {
+        e.target
+        for e in result.graph.edges
+        if e.type is EdgeType.WRITES and e.source.endswith(".load")
+    }
+    assert written == {
+        field_id("batch_id"),
+        field_id("campaign_id"),
+        field_id("spend_usd"),
+    }
+    assert FindingKind.RUNTIME_COLUMNS not in {f.kind for f in result.findings}
+
+
 SQL = """-- stage one
 CREATE TEMP TABLE cleaned AS
 SELECT user_id, amount_cents / 100.0 AS amount_usd,

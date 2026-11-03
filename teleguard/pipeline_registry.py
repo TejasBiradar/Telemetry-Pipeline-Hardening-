@@ -84,6 +84,15 @@ class PipelineRegistry:
             return True
         return False
 
+    def remove(self, pipeline_id: str) -> bool:
+        """Drop a pipeline from the registry. Returns True if it was present."""
+        if pipeline_id not in self.pipelines:
+            return False
+        del self.pipelines[pipeline_id]
+        if self.active_pipeline_id == pipeline_id:
+            self.active_pipeline_id = next(iter(self.pipelines), "")
+        return True
+
     def list_all(self) -> list[PipelineMetadata]:
         """List all pipelines."""
         return list(self.pipelines.values())

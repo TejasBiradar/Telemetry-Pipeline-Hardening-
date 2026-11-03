@@ -31,6 +31,7 @@ from api.schemas import (
     DecisionIn,
     EvaluationSummaryOut,
     GuaranteeDecisionIn,
+    GuaranteeDecisionsIn,
     GuaranteeOut,
     LineageStepOut,
     MinioOutputStoreIn,
@@ -44,7 +45,14 @@ from api.schemas import (
 from api.state import AppState, build_state
 from datagen.catalog import generate_for_pipeline
 from datagen.generate import GenConfig
-from teleguard.agent.results_store import AgentRun, append_run, latest_run, list_runs
+from teleguard.agent.results_store import (
+    AgentRun,
+    append_run,
+    delete_runs_for_stages,
+    latest_run,
+    list_runs,
+)
+from teleguard.agent.seed_seen import seed_existing_outputs
 from teleguard.contracts.decisions_filter import (
     contract_for_decisions,
     contract_needs_baselines,
@@ -60,8 +68,10 @@ from teleguard.onboard.code import (
     CodeOnboardRecord,
     agent_checkpoints,
     confirmed_stages,
+    delete_record,
     list_records,
     load_record,
+    merge_reanalyze,
     onboard_pipeline,
     register_record,
     save_record,
@@ -71,6 +81,9 @@ from teleguard.onboard.code import (
 )
 from teleguard.onboard.code import (
     set_guarantee_decision as apply_guarantee_decision,
+)
+from teleguard.onboard.code import (
+    set_guarantee_decisions as apply_guarantee_decisions,
 )
 
 N_BATCHES = 10
@@ -236,6 +249,32 @@ def _persist_onboard_record(state: AppState, record: CodeOnboardRecord) -> str:
     return meta_path
 
 
+def _seed_after_stage_change(
+    before: CodeOnboardRecord,
+    after: CodeOnboardRecord,
+) -> None:
+    """Reset monitoring history whenever the confirmed-stage set changes.
+
+    Rejected stages drop their Results rows. Newly or still-confirmed stages are
+    re-baselined so Results match the current watched set. Re-analyze that keeps
+    the same confirmed stages does not clear Results.
+    """
+    before_watched = set(confirmed_stages(before))
+    after_watched = set(confirmed_stages(after))
+    if before_watched == after_watched:
+        return
+    unwatched = [
+        stage
+        for stage in after.stages
+        if after.stage_status.get(stage) != "confirmed"
+    ]
+    # Also drop runs for stages that disappeared from the graph entirely.
+    unwatched.extend(sorted(before_watched - after_watched))
+    delete_runs_for_stages(after.pipeline_id, unwatched, store_root=DEFAULT_STORE)
+    if after_watched:
+        seed_existing_outputs(after, stages=sorted(after_watched), store_root=DEFAULT_STORE)
+
+
 @app.get("/pipelines/code-onboard", response_model=list[CodeOnboardSummaryOut])
 def list_code_onboard() -> list[CodeOnboardSummaryOut]:
     """List pipelines registered through code onboard (not built-in demos)."""
@@ -290,6 +329,44 @@ def post_code_onboard(body: CodeOnboardIn) -> CodeOnboardOut:
     return _code_onboard_out(record, str(meta_path))
 
 
+@app.put("/pipelines/{pipeline_id}/code-onboard", response_model=CodeOnboardOut)
+def put_code_onboard(pipeline_id: str, body: CodeOnboardIn) -> CodeOnboardOut:
+    """Re-analyze an existing registration in place.
+
+    Keeps the same pipeline id, the saved connector, and prior stage/guarantee
+    decisions for anything still present after analysis.
+    """
+    state = _state_or_503()
+    previous = load_record(pipeline_id, store_root=DEFAULT_STORE)
+    if previous is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    try:
+        fresh = onboard_pipeline(
+            name=body.name,
+            entry=body.entry,
+            adapter=body.adapter,
+            description=body.description,
+            pipeline_id=pipeline_id,
+            source_path=Path(body.source_path) if body.source_path else None,
+            git_url=body.git_url,
+            git_ref=body.git_ref,
+            source_subdir=body.source_subdir,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+    record = merge_reanalyze(previous, fresh)
+    meta_path = _persist_onboard_record(state, record)
+    if body.select:
+        state.registry.select(record.pipeline_id)
+    _seed_after_stage_change(previous, record)
+    return _code_onboard_out(record, meta_path)
+
+
 @app.get("/pipelines/{pipeline_id}/code-onboard", response_model=CodeOnboardOut)
 def get_code_onboard(pipeline_id: str) -> CodeOnboardOut:
     """Return stored code-onboard metadata for a pipeline."""
@@ -297,6 +374,18 @@ def get_code_onboard(pipeline_id: str) -> CodeOnboardOut:
     if record is None:
         raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
     return _code_onboard_out(record, _metadata_locator(pipeline_id))
+
+
+@app.delete("/pipelines/{pipeline_id}/code-onboard")
+def delete_code_onboard(pipeline_id: str) -> dict[str, object]:
+    """Remove an onboarded pipeline registration and its stored agent results."""
+    state = _state_or_503()
+    if load_record(pipeline_id, store_root=DEFAULT_STORE) is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    if not delete_record(pipeline_id, store_root=DEFAULT_STORE):
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    state.registry.remove(pipeline_id)
+    return {"status": "ok", "pipeline_id": pipeline_id}
 
 
 @app.put(
@@ -318,6 +407,7 @@ def put_stage_decision(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     path = _persist_onboard_record(state, updated)
+    _seed_after_stage_change(record, updated)
     return _code_onboard_out(updated, path)
 
 
@@ -330,6 +420,26 @@ def put_stage_decisions(pipeline_id: str, body: StageDecisionsIn) -> CodeOnboard
         raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
     try:
         updated = set_stage_decisions(record, body.decisions)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    path = _persist_onboard_record(state, updated)
+    _seed_after_stage_change(record, updated)
+    return _code_onboard_out(updated, path)
+
+
+@app.put("/pipelines/{pipeline_id}/guarantees/decisions", response_model=CodeOnboardOut)
+def put_onboard_guarantee_decisions(
+    pipeline_id: str, body: GuaranteeDecisionsIn
+) -> CodeOnboardOut:
+    """Bulk confirm/reject onboarded guarantees."""
+    state = _state_or_503()
+    record = load_record(pipeline_id, store_root=DEFAULT_STORE)
+    if record is None:
+        raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    try:
+        updated = apply_guarantee_decisions(record, body.decisions)
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
@@ -372,6 +482,8 @@ def put_output_store(pipeline_id: str, body: MinioOutputStoreIn) -> CodeOnboardO
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     path = _persist_onboard_record(state, updated)
+    # Connector attach starts monitoring; ignore files already in the store.
+    seed_existing_outputs(updated, store_root=DEFAULT_STORE)
     return _code_onboard_out(updated, path)
 
 
@@ -399,10 +511,16 @@ def post_agent_results(pipeline_id: str, body: AgentRunIn) -> AgentRunOut:
 
 @app.get("/pipelines/{pipeline_id}/agent/results", response_model=list[AgentRunOut])
 def get_agent_results(pipeline_id: str, limit: int = 50) -> list[AgentRunOut]:
-    """List recent agent runs (newest last)."""
-    if load_record(pipeline_id, store_root=DEFAULT_STORE) is None:
+    """List recent agent runs for currently confirmed stages (newest last)."""
+    record = load_record(pipeline_id, store_root=DEFAULT_STORE)
+    if record is None:
         raise HTTPException(404, f"no code-onboard record for '{pipeline_id}'")
+    watched = set(confirmed_stages(record))
     runs = list_runs(pipeline_id, limit=max(1, min(limit, 500)), store_root=DEFAULT_STORE)
+    if watched:
+        runs = [run for run in runs if run.stage in watched]
+    else:
+        runs = []
     return [AgentRunOut(**r.to_json()) for r in runs]
 
 

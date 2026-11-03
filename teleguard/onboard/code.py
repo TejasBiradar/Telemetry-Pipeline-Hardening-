@@ -234,6 +234,37 @@ def onboard_pipeline(
     )
 
 
+def merge_reanalyze(
+    previous: CodeOnboardRecord,
+    fresh: CodeOnboardRecord,
+) -> CodeOnboardRecord:
+    """Keep id, connector, and prior decisions when re-analyzing the same pipeline.
+
+    Stages/guarantees that are still present keep their previous status. New ones
+    start as pending. The output store is left unchanged unless the caller edits it.
+    """
+    stage_status = {
+        stage: previous.stage_status.get(stage, "pending") for stage in fresh.stages
+    }
+    known_findings = {
+        str(finding.get("id", ""))
+        for finding in fresh.findings
+        if isinstance(finding, dict)
+    }
+    guarantee_status = {
+        fid: previous.guarantee_status.get(fid, "pending") for fid in known_findings if fid
+    }
+    return replace(
+        fresh,
+        pipeline_id=previous.pipeline_id,
+        output_store=dict(previous.output_store)
+        if isinstance(previous.output_store, dict)
+        else previous.output_store,
+        stage_status=stage_status,
+        guarantee_status=guarantee_status,
+    )
+
+
 def save_record(record: CodeOnboardRecord, store_root: Path = DEFAULT_STORE) -> str:
     """Persist metadata in Postgres, or under ``store_root`` when no database is configured."""
     if _use_database(store_root):
@@ -280,6 +311,23 @@ def list_records(store_root: Path = DEFAULT_STORE) -> list[CodeOnboardRecord]:
             if isinstance(raw, dict):
                 out.append(CodeOnboardRecord.from_json(raw))
     return out
+
+
+def delete_record(pipeline_id: str, store_root: Path = DEFAULT_STORE) -> bool:
+    """Remove stored metadata (and agent runs) for one onboarded pipeline.
+
+    Returns False when nothing was stored for ``pipeline_id``.
+    """
+    if _use_database(store_root):
+        from teleguard.pg_store import delete_registration, import_legacy_files
+
+        import_legacy_files(DEFAULT_STORE, _notify_path())
+        return delete_registration(pipeline_id)
+    dest = store_root / pipeline_id
+    if not dest.is_dir():
+        return False
+    shutil.rmtree(dest)
+    return True
 
 
 def _use_database(store_root: Path) -> bool:
@@ -382,6 +430,17 @@ def set_guarantee_decision(
     updated = dict(record.guarantee_status)
     updated[guarantee_id] = status
     return replace(record, guarantee_status=updated)
+
+
+def set_guarantee_decisions(
+    record: CodeOnboardRecord,
+    decisions: dict[str, str],
+) -> CodeOnboardRecord:
+    """Apply many guarantee decisions; unknown ids raise ``KeyError``."""
+    out = record
+    for guarantee_id, status in decisions.items():
+        out = set_guarantee_decision(out, guarantee_id, status)
+    return out
 
 
 def confirmed_stages(record: CodeOnboardRecord) -> list[str]:

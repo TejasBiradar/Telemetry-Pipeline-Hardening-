@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -94,6 +95,71 @@ def list_runs(
 def latest_run(pipeline_id: str, store_root: Path = DEFAULT_STORE) -> AgentRun | None:
     all_runs = list_runs(pipeline_id, limit=10_000, store_root=store_root)
     return all_runs[-1] if all_runs else None
+
+
+def delete_runs_for_object_keys(
+    pipeline_id: str,
+    object_keys: list[str] | set[str],
+    *,
+    store_root: Path = DEFAULT_STORE,
+) -> int:
+    """Drop stored runs for keys ignored as historical baseline."""
+    wanted = {str(key) for key in object_keys}
+    if not wanted:
+        return 0
+    from teleguard.pg_store import delete_agent_runs_for_keys, uses_database
+
+    if uses_database(store_root, DEFAULT_STORE):
+        return delete_agent_runs_for_keys(pipeline_id, sorted(wanted))
+    return _rewrite_runs(
+        pipeline_id,
+        store_root,
+        keep=lambda raw: str(raw.get("object_key", "")) not in wanted,
+    )
+
+
+def delete_runs_for_stages(
+    pipeline_id: str,
+    stages: list[str] | set[str],
+    *,
+    store_root: Path = DEFAULT_STORE,
+) -> int:
+    """Drop stored runs for stages that are no longer monitored."""
+    wanted = {str(stage) for stage in stages}
+    if not wanted:
+        return 0
+    from teleguard.pg_store import delete_agent_runs_for_stages, uses_database
+
+    if uses_database(store_root, DEFAULT_STORE):
+        return delete_agent_runs_for_stages(pipeline_id, sorted(wanted))
+    return _rewrite_runs(
+        pipeline_id,
+        store_root,
+        keep=lambda raw: str(raw.get("stage", "")) not in wanted,
+    )
+
+
+def _rewrite_runs(
+    pipeline_id: str,
+    store_root: Path,
+    *,
+    keep: Callable[[dict[str, Any]], bool],
+) -> int:
+    path = _runs_path(pipeline_id, store_root)
+    if not path.exists():
+        return 0
+    kept: list[str] = []
+    removed = 0
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        raw: object = json.loads(line)
+        if isinstance(raw, dict) and keep(raw):
+            kept.append(line)
+        else:
+            removed += 1
+    path.write_text(("\n".join(kept) + ("\n" if kept else "")), encoding="utf-8")
+    return removed
 
 
 def now_utc() -> str:

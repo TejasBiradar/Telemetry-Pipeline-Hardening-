@@ -1,0 +1,5 @@
+name: Ad Performance
+description: Media ETL with CPM/CPC/CTR calculations, filters, and campaign rollups.
+entry: run.run
+adapter: python_pandas
+source_dir: src

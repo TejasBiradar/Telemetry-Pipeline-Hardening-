@@ -1,27 +1,38 @@
-import { useCallback, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import type { OnboardGraph, OnboardGraphEdge, OnboardGraphNode } from "../api/client"
 
-const NODE_W = 220
-const NODE_H = 64
-const GAP_X = 28
-const GAP_Y = 36
-const PAD = 24
+const STAGE_W = 200
+const STAGE_H = 76
+const FIELD_W = 220
+const FIELD_H = 68
+const OUT_W = 200
+const OUT_H = 56
+const COL_GAP = 56
+const STAGE_GAP = 40
+const FIELD_GAP = 14
+const PAD = 28
 
-interface StageCard {
+type GraphKind = "stage" | "field" | "output"
+type EdgeKind = "next_stage" | "link" | "produces"
+
+interface PlacedNode {
   id: string
   label: string
-  column: number
-  row: number
-  order: number
-  writes: string[]
-  reads: string[]
-  outputUri: string
+  kind: GraphKind
   x: number
   y: number
+  w: number
+  h: number
+  order?: number
+  meta?: string
+  role?: string
+  detail?: string
+  expanded?: boolean
 }
 
-interface StageEdge {
+interface PlacedEdge {
   id: string
+  kind: EdgeKind
   x1: number
   y1: number
   x2: number
@@ -31,21 +42,20 @@ interface StageEdge {
 interface Layout {
   width: number
   height: number
-  stages: StageCard[]
-  edges: StageEdge[]
+  nodes: PlacedNode[]
+  edges: PlacedEdge[]
 }
 
 export function PipelineGraph({ graph }: { graph: OnboardGraph | undefined }) {
-  const layout = useMemo(() => layoutStages(graph), [graph])
-  const [picked, setPicked] = useState<string | null>(null)
+  const [expandedStageId, setExpandedStageId] = useState<string>("")
+  const layout = useMemo(
+    () => layoutGraph(graph, expandedStageId),
+    [graph, expandedStageId],
+  )
 
-  if (!layout || layout.stages.length === 0) {
+  if (!layout || layout.nodes.length === 0) {
     return <p className="flow-note">This registration has no stages in its code graph.</p>
   }
-
-  const selected =
-    layout.stages.find((stage) => stage.id === picked) ??
-    layout.stages[0]
 
   return (
     <div className="graph-panel-body">
@@ -58,255 +68,418 @@ export function PipelineGraph({ graph }: { graph: OnboardGraph | undefined }) {
             aria-hidden="true"
           >
             <defs>
-              <marker id="graph-stage-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+              <marker id="graph-arrow-stage" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
                 <path d="M0 0 L8 4 L0 8 Z" className="graph-arrow" />
+              </marker>
+              <marker id="graph-arrow-data" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                <path d="M0 0 L7 3.5 L0 7 Z" className="graph-arrow-data" />
               </marker>
             </defs>
             {layout.edges.map((edge) => (
-              <path key={edge.id} d={edgePath(edge)} className="graph-edge" markerEnd="url(#graph-stage-arrow)" />
+              <path
+                key={edge.id}
+                d={edgePath(edge)}
+                className={`graph-edge graph-edge-${edge.kind}`}
+                markerEnd={
+                  edge.kind === "next_stage"
+                    ? "url(#graph-arrow-stage)"
+                    : "url(#graph-arrow-data)"
+                }
+              />
             ))}
           </svg>
-          {layout.stages.map((stage) => (
-            <StageNode
-              key={stage.id}
-              stage={stage}
-              selected={stage.id === selected.id}
-              onSelect={setPicked}
+          {layout.nodes.map((node) => (
+            <GraphNode
+              key={node.id}
+              node={node}
+              onToggleStage={(stageId) => {
+                setExpandedStageId((current) => (current === stageId ? "" : stageId))
+              }}
             />
           ))}
         </div>
-        <p className="graph-legend">Select a stage. The line is the order the tasks run.</p>
+        <p className="graph-legend">
+          Stages and columns come from this registration&apos;s code graph. Green = column this
+          stage writes or reads. Peach = a pipeline output the graph links from that column
+          (a produce edge), not “leaves this stage.”
+        </p>
       </div>
-      <StageDetail stage={selected} />
     </div>
   )
 }
 
-function StageNode({
-  stage,
-  selected,
-  onSelect,
+function GraphNode({
+  node,
+  onToggleStage,
 }: {
-  stage: StageCard
-  selected: boolean
-  onSelect: (id: string) => void
+  node: PlacedNode
+  onToggleStage: (stageId: string) => void
 }) {
-  const select = useCallback(() => onSelect(stage.id), [onSelect, stage.id])
+  if (node.kind === "stage") {
+    return (
+      <button
+        type="button"
+        className={`graph-stage graph-stage-button${node.expanded ? " is-selected" : ""}`}
+        style={{ left: node.x, top: node.y, width: node.w, height: node.h }}
+        title={node.expanded ? `Collapse ${node.label}` : `Expand ${node.label}`}
+        aria-expanded={node.expanded === true}
+        onClick={() => onToggleStage(node.id)}
+      >
+        <span className="graph-stage-index">{node.order ?? ""}</span>
+        <strong className="graph-stage-name">{node.label}</strong>
+        <span className="graph-stage-meta">{node.meta ?? "stage"}</span>
+      </button>
+    )
+  }
+
   const className = [
-    "graph-stage",
-    selected ? "is-selected" : "",
-    stage.outputUri ? "is-output" : "",
+    "graph-data-node",
+    node.kind === "output" ? "is-output" : "is-field",
+    node.role === "input" ? "is-input" : "",
+    node.role === "adds" ? "is-adds" : "",
+    node.role === "updates" ? "is-updates" : "",
   ]
     .filter(Boolean)
     .join(" ")
-  const meta = stage.outputUri
-    ? "Writes a file"
-    : stage.writes.length > 0
-      ? `${stage.writes.length} fields`
-      : "No fields"
-
+  const kindLabel =
+    node.kind === "output"
+      ? "Pipeline output"
+      : node.role === "input"
+        ? "Input to this stage"
+        : node.role === "adds"
+          ? "Added by this stage"
+          : node.role === "updates"
+            ? "Updated in this stage"
+            : "Field"
   return (
-    <button
-      type="button"
+    <div
       className={className}
-      style={{ left: stage.x, top: stage.y, width: NODE_W, height: NODE_H }}
-      aria-pressed={selected}
-      title={stage.label}
-      onClick={select}
+      style={{ left: node.x, top: node.y, width: node.w, height: node.h }}
+      title={node.detail ? `${node.label}: ${node.detail}` : `${node.label} — ${kindLabel}`}
     >
-      <span className="graph-stage-index">{stage.order}</span>
-      <span className="graph-stage-name">{stage.label}</span>
-      <span className="graph-stage-meta">{meta}</span>
-    </button>
-  )
-}
-
-function StageDetail({ stage }: { stage: StageCard }) {
-  return (
-    <section className="graph-detail" aria-label={`${stage.label} fields`}>
-      <div className="graph-detail-head">
-        <h3 className="graph-detail-title">{stage.label}</h3>
-        <span className="graph-stage-meta">{stage.outputUri ? "Writes a file" : "In memory"}</span>
-      </div>
-      {stage.outputUri ? <p className="graph-output mono">{stage.outputUri}</p> : null}
-      {sameFields(stage.writes, stage.reads) ? (
-        <FieldList title="Fields" fields={stage.writes} tone="write" />
-      ) : (
-        <>
-          <FieldList title="Writes" fields={stage.writes} tone="write" />
-          <FieldList title="Reads" fields={stage.reads} tone="read" />
-        </>
-      )}
-    </section>
-  )
-}
-
-function sameFields(left: string[], right: string[]): boolean {
-  return left.length > 0 && left.length === right.length && left.every((field, index) => field === right[index])
-}
-
-function FieldList({ title, fields, tone }: { title: string; fields: string[]; tone: "write" | "read" }) {
-  return (
-    <div>
-      <h4 className="graph-detail-label">{title}</h4>
-      {fields.length === 0 ? (
-        <p className="flow-note">None recorded</p>
-      ) : (
-        <ul className="graph-chips">
-          {fields.map((field) => (
-            <li key={field} className={`graph-chip graph-chip-${tone}`}>
-              {field}
-            </li>
-          ))}
-        </ul>
-      )}
+      <span className="graph-data-kind">{kindLabel}</span>
+      <strong className="graph-data-label">{node.label}</strong>
+      {node.detail ? <span className="graph-data-detail">{node.detail}</span> : null}
     </div>
   )
 }
 
-function layoutStages(graph: OnboardGraph | undefined): Layout | null {
+function layoutGraph(
+  graph: OnboardGraph | undefined,
+  expandedStageId: string,
+): Layout | null {
   const nodes = graph?.nodes ?? []
   const edges = graph?.edges ?? []
-  const stages = nodes.filter((node) => node.type === "stage")
+  const stages = nodes
+    .filter((node) => node.type === "stage")
+    .slice()
+    .sort((left, right) => stageOrder(left) - stageOrder(right) || left.label.localeCompare(right.label))
   if (stages.length === 0) return null
 
-  const rank = dependencyRank(stages, edges)
-  const compact = compactColumns(rank)
-  const cards = placeStages(stages, edges, nodes, rank, compact)
-  const byId = new Map(cards.map((stage) => [stage.id, stage]))
-  const drawn: StageEdge[] = []
-  for (const edge of edges) {
-    if (edge.type !== "next_stage") continue
-    const source = byId.get(edge.source)
-    const target = byId.get(edge.target)
-    if (!source || !target) continue
-    drawn.push({
-      id: `${edge.source}:${edge.target}`,
-      x1: source.x + NODE_W / 2,
-      y1: source.y + NODE_H,
-      x2: target.x + NODE_W / 2,
-      y2: target.y,
+  const labelOf = new Map(nodes.map((node) => [node.id, displayLabel(node)]))
+  const typeOf = new Map(nodes.map((node) => [node.id, node.type]))
+  const links = stageFieldLinks(edges, typeOf)
+  const formulas = formulasByField(edges)
+
+  const placedStages: PlacedNode[] = []
+  const stageCenterY = new Map<string, number>()
+  let y = PAD
+  stages.forEach((stage, index) => {
+    const linked = links.get(stage.id)
+    const fieldCount = linked
+      ? new Set([...linked.writeIds, ...linked.readIds]).size
+      : 0
+    const outputCount = linked?.outputIds.size ?? 0
+    const expanded = stage.id === expandedStageId
+    const metaParts: string[] = [
+      `${fieldCount} field${fieldCount === 1 ? "" : "s"}`,
+    ]
+    if (outputCount > 0) metaParts.push(`${outputCount} out`)
+    metaParts.push(expanded ? "click to collapse" : "click to expand")
+
+    placedStages.push({
+      id: stage.id,
+      label: displayLabel(stage),
+      kind: "stage",
+      x: PAD,
+      y,
+      w: STAGE_W,
+      h: STAGE_H,
+      order: typeof stage.attrs.order === "number" ? stage.attrs.order : index + 1,
+      meta: metaParts.join(" · "),
+      expanded,
     })
+    stageCenterY.set(stage.id, y + STAGE_H / 2)
+    y += STAGE_H + STAGE_GAP
+  })
+
+  const fieldColX = PAD + STAGE_W + COL_GAP
+  const outColX = fieldColX + FIELD_W + COL_GAP
+  const fieldNodes = new Map<string, PlacedNode>()
+  const outputNodes = new Map<string, PlacedNode>()
+  const expandedStage = stages.find((stage) => stage.id === expandedStageId)
+
+  if (expandedStageId && expandedStage) {
+    const linked = links.get(expandedStageId)
+    const startY = (stageCenterY.get(expandedStageId) ?? PAD) - FIELD_H / 2
+    let cursor = startY
+    if (linked) {
+      const fieldIds = orderedFieldIds(linked)
+      const stageKey = displayLabel(expandedStage).toLowerCase()
+      for (const fieldId of fieldIds) {
+        const name = labelOf.get(fieldId) ?? shortId(fieldId)
+        const role = fieldRole(linked, fieldId)
+        const detail =
+          role === "adds" || role === "updates"
+            ? pickFormula(formulas.get(fieldId) ?? [], stageKey)
+            : undefined
+        fieldNodes.set(fieldId, {
+          id: fieldId,
+          label: name,
+          kind: "field",
+          role,
+          detail,
+          x: fieldColX,
+          y: cursor,
+          w: FIELD_W,
+          h: FIELD_H,
+        })
+        cursor += FIELD_H + FIELD_GAP
+      }
+
+      for (const outputId of linked.outputIds) {
+        const ownerField = [...linked.produceFrom.entries()].find(([, outs]) =>
+          outs.has(outputId),
+        )?.[0]
+        const fieldY = ownerField ? fieldNodes.get(ownerField)?.y : undefined
+        const anchorY = fieldY ?? cursor
+        outputNodes.set(outputId, {
+          id: outputId,
+          label: labelOf.get(outputId) ?? shortId(outputId),
+          kind: "output",
+          role: "produces",
+          x: outColX,
+          y: anchorY,
+          w: OUT_W,
+          h: OUT_H,
+        })
+      }
+    }
   }
-  const columns = Math.max(...cards.map((stage) => stage.column), 0) + 1
-  const rows = Math.max(...cards.map((stage) => stage.row), 0) + 1
+
+  const placed = [...placedStages, ...fieldNodes.values(), ...outputNodes.values()]
+  const byId = new Map(placed.map((node) => [node.id, node]))
+  const drawn: PlacedEdge[] = []
+
+  for (const edge of edges) {
+    if (edge.type === "next_stage") {
+      const source = byId.get(edge.source)
+      const target = byId.get(edge.target)
+      if (!source || !target) continue
+      drawn.push(connect(source, target, "next_stage", "bottom", "top"))
+    }
+  }
+
+  // One clean link from the expanded stage to each of its fields (no reverse reads,
+  // no field-to-field derive fan-out — those caused the ghosted dashed lines).
+  if (expandedStageId) {
+    const linked = links.get(expandedStageId)
+    const stage = byId.get(expandedStageId)
+    if (linked && stage) {
+      for (const fieldId of orderedFieldIds(linked)) {
+        const field = byId.get(fieldId)
+        if (!field) continue
+        drawn.push(connect(stage, field, "link", "right", "left"))
+      }
+      for (const [fieldId, outs] of linked.produceFrom) {
+        const field = byId.get(fieldId)
+        if (!field) continue
+        for (const outputId of outs) {
+          const output = byId.get(outputId)
+          if (!output) continue
+          drawn.push(connect(field, output, "produces", "right", "left"))
+        }
+      }
+    }
+  }
+
+  const maxRight = Math.max(...placed.map((node) => node.x + node.w), PAD)
+  const maxBottom = Math.max(...placed.map((node) => node.y + node.h), PAD)
   return {
-    width: PAD * 2 + rows * NODE_W + Math.max(rows - 1, 0) * GAP_X,
-    height: PAD * 2 + columns * NODE_H + Math.max(columns - 1, 0) * GAP_Y,
-    stages: cards,
+    width: maxRight + PAD,
+    height: maxBottom + PAD,
+    nodes: placed,
     edges: drawn,
   }
 }
 
-function placeStages(
-  stages: OnboardGraphNode[],
-  edges: OnboardGraphEdge[],
-  nodes: OnboardGraphNode[],
-  rank: Map<string, number>,
-  compact: Map<number, number>,
-): StageCard[] {
-  const fields = fieldsByStage(edges, nodes)
-  const grouped = new Map<number, OnboardGraphNode[]>()
-  for (const stage of stages) {
-    const column = compact.get(rank.get(stage.id) ?? 0) ?? 0
-    const list = grouped.get(column) ?? []
-    list.push(stage)
-    grouped.set(column, list)
-  }
-  const placed: StageCard[] = []
-  for (const [column, list] of grouped) {
-    list.sort((left, right) => stageOrder(left) - stageOrder(right) || left.label.localeCompare(right.label))
-    list.forEach((stage, row) => {
-      const linked = fields.get(stage.id)
-      const output = stage.attrs.output_uri
-      placed.push({
-        id: stage.id,
-        label: stage.label,
-        column,
-        row,
-        order: stageOrder(stage),
-        writes: linked?.writes ?? [],
-        reads: linked?.reads ?? [],
-        outputUri: typeof output === "string" ? output : "",
-        x: PAD + row * (NODE_W + GAP_X),
-        y: PAD + column * (NODE_H + GAP_Y),
-      })
-    })
-  }
-  return placed.sort((left, right) => left.column - right.column || left.row - right.row)
+interface StageLinks {
+  writeIds: Set<string>
+  readIds: Set<string>
+  outputIds: Set<string>
+  produceFrom: Map<string, Set<string>>
 }
 
-function fieldsByStage(
+interface FormulaHit {
+  formula: string
+  file: string
+}
+
+function stageFieldLinks(
   edges: OnboardGraphEdge[],
-  nodes: OnboardGraphNode[],
-): Map<string, { writes: string[]; reads: string[] }> {
-  const labelOf = new Map(nodes.map((node) => [node.id, node.label]))
+  typeOf: Map<string, string>,
+): Map<string, StageLinks> {
   const stageOfFunction = new Map<string, string>()
   for (const edge of edges) {
-    if (edge.type === "calls") stageOfFunction.set(edge.target, edge.source)
+    if (edge.type === "calls" && typeOf.get(edge.source) === "stage") {
+      stageOfFunction.set(edge.target, edge.source)
+    }
   }
-  const writes = new Map<string, Set<string>>()
-  const reads = new Map<string, Set<string>>()
+
+  const byStage = new Map<string, StageLinks>()
+  const ensure = (stageId: string): StageLinks => {
+    const existing = byStage.get(stageId)
+    if (existing) return existing
+    const created: StageLinks = {
+      writeIds: new Set(),
+      readIds: new Set(),
+      outputIds: new Set(),
+      produceFrom: new Map(),
+    }
+    byStage.set(stageId, created)
+    return created
+  }
+
+  const writtenBy = new Map<string, string>()
   for (const edge of edges) {
     if (edge.type === "writes") {
       const stage = stageOfFunction.get(edge.source)
-      if (stage) addLabel(writes, stage, labelOf.get(edge.target) ?? edge.target)
+      if (!stage) continue
+      ensure(stage).writeIds.add(edge.target)
+      writtenBy.set(edge.target, stage)
     }
     if (edge.type === "reads") {
       const stage = stageOfFunction.get(edge.target)
-      if (stage) addLabel(reads, stage, labelOf.get(edge.source) ?? edge.source)
+      if (!stage) continue
+      ensure(stage).readIds.add(edge.source)
     }
   }
-  const stages = new Set([...writes.keys(), ...reads.keys()])
-  return new Map(
-    [...stages].map((stage) => [
-      stage,
-      {
-        writes: sorted(writes.get(stage)),
-        reads: sorted(reads.get(stage)),
-      },
-    ]),
-  )
-}
 
-function addLabel(bucket: Map<string, Set<string>>, stage: string, label: string): void {
-  const set = bucket.get(stage) ?? new Set<string>()
-  set.add(label)
-  bucket.set(stage, set)
-}
-
-function sorted(values: Set<string> | undefined): string[] {
-  return [...(values ?? [])].sort((left, right) => left.localeCompare(right))
-}
-
-function dependencyRank(stages: OnboardGraphNode[], edges: OnboardGraphEdge[]): Map<string, number> {
-  const rank = new Map(stages.map((stage) => [stage.id, 0]))
-  for (let pass = 0; pass < stages.length; pass += 1) {
-    let changed = false
-    for (const edge of edges) {
-      if (edge.type !== "next_stage") continue
-      const next = (rank.get(edge.source) ?? 0) + 1
-      if ((rank.get(edge.target) ?? 0) < next) {
-        rank.set(edge.target, next)
-        changed = true
-      }
-    }
-    if (!changed) break
+  for (const edge of edges) {
+    if (edge.type !== "produces") continue
+    const stage = writtenBy.get(edge.source)
+    if (!stage) continue
+    const linked = ensure(stage)
+    linked.outputIds.add(edge.target)
+    const outs = linked.produceFrom.get(edge.source) ?? new Set<string>()
+    outs.add(edge.target)
+    linked.produceFrom.set(edge.source, outs)
   }
-  return rank
+
+  return byStage
 }
 
-function compactColumns(rank: Map<string, number>): Map<number, number> {
-  const orders = [...new Set(rank.values())].sort((left, right) => left - right)
-  return new Map(orders.map((order, index) => [order, index]))
+function formulasByField(edges: OnboardGraphEdge[]): Map<string, FormulaHit[]> {
+  const byField = new Map<string, FormulaHit[]>()
+  for (const edge of edges) {
+    if (edge.type !== "derives") continue
+    const raw = edge.attrs?.formula
+    if (typeof raw !== "string" || raw.trim().length === 0) continue
+    const file = edge.evidence?.file ?? ""
+    const list = byField.get(edge.target) ?? []
+    list.push({ formula: raw, file })
+    byField.set(edge.target, list)
+  }
+  return byField
+}
+
+function pickFormula(hits: FormulaHit[], stageKey: string): string | undefined {
+  if (hits.length === 0) return undefined
+  const staged =
+    hits.find((hit) => hit.file.toLowerCase().includes(`${stageKey}.py`)) ??
+    hits.find((hit) => hit.file.toLowerCase().includes(stageKey)) ??
+    hits[0]
+  return shortenFormula(staged.formula)
+}
+
+function shortenFormula(formula: string): string {
+  let text = formula
+    .replace(/\bsummary\[/g, "")
+    .replace(/\bdf\[/g, "")
+    .replace(/\]/g, "")
+    .replace(/\.where\([^)]+\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+  // cpm(spend_usd, impressions) → keep readable
+  text = text.replace(/^cpm\((.+),\s*(.+)\)$/i, "$1 / $2 × 1000")
+  text = text.replace(/^cpc\((.+),\s*(.+)\)$/i, "$1 / $2")
+  text = text.replace(/^ctr\((.+),\s*(.+)\)$/i, "$1 / $2")
+  if (text.length > 42) return `${text.slice(0, 39)}…`
+  return text
+}
+
+function orderedFieldIds(linked: StageLinks): string[] {
+  const writes = [...linked.writeIds].sort()
+  const readsOnly = [...linked.readIds].filter((id) => !linked.writeIds.has(id)).sort()
+  return [...writes, ...readsOnly]
+}
+
+function fieldRole(linked: StageLinks, fieldId: string): string {
+  const writes = linked.writeIds.has(fieldId)
+  const reads = linked.readIds.has(fieldId)
+  if (writes && reads) return "updates"
+  if (writes) return "adds"
+  if (reads) return "input"
+  return ""
+}
+
+function displayLabel(node: OnboardGraphNode): string {
+  const label = typeof node.label === "string" ? node.label.trim() : ""
+  if (label.length > 0) return label
+  return shortId(node.id)
+}
+
+function shortId(id: string): string {
+  const parts = id.split(":")
+  return parts[parts.length - 1] || id
+}
+
+function connect(
+  source: PlacedNode,
+  target: PlacedNode,
+  kind: EdgeKind,
+  from: "right" | "bottom" | "left",
+  to: "left" | "top" | "right",
+): PlacedEdge {
+  const start = anchor(source, from)
+  const end = anchor(target, to)
+  return {
+    id: `${kind}:${source.id}:${target.id}`,
+    kind,
+    x1: start.x,
+    y1: start.y,
+    x2: end.x,
+    y2: end.y,
+  }
+}
+
+function anchor(node: PlacedNode, side: "left" | "right" | "top" | "bottom"): { x: number; y: number } {
+  if (side === "left") return { x: node.x, y: node.y + node.h / 2 }
+  if (side === "right") return { x: node.x + node.w, y: node.y + node.h / 2 }
+  if (side === "top") return { x: node.x + node.w / 2, y: node.y }
+  return { x: node.x + node.w / 2, y: node.y + node.h }
+}
+
+function edgePath(edge: PlacedEdge): string {
+  if (edge.kind === "next_stage") {
+    const mid = (edge.y1 + edge.y2) / 2
+    return `M ${edge.x1} ${edge.y1} C ${edge.x1} ${mid}, ${edge.x2} ${mid}, ${edge.x2} ${edge.y2}`
+  }
+  const mid = (edge.x1 + edge.x2) / 2
+  return `M ${edge.x1} ${edge.y1} C ${mid} ${edge.y1}, ${mid} ${edge.y2}, ${edge.x2} ${edge.y2}`
 }
 
 function stageOrder(node: OnboardGraphNode): number {
   const order = node.attrs.order
   return typeof order === "number" ? order : 0
-}
-
-function edgePath(edge: StageEdge): string {
-  const mid = (edge.y1 + edge.y2) / 2
-  return `M ${edge.x1} ${edge.y1} C ${edge.x1} ${mid}, ${edge.x2} ${mid}, ${edge.x2} ${edge.y2}`
 }

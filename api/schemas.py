@@ -157,6 +157,10 @@ class StageDecisionsIn(BaseModel):
     decisions: dict[str, str]
 
 
+class GuaranteeDecisionsIn(BaseModel):
+    decisions: dict[str, str]
+
+
 class StageLocationIn(BaseModel):
     """Folder, object/glob, or database table for one stage."""
 

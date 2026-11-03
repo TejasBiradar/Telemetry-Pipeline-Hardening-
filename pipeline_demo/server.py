@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from pipeline_demo.catalog import PipelineSpec, list_pipelines, pipeline_by_id
 from pipeline_demo.faults import fault_by_id, list_faults
-from pipeline_demo.runner import build_events, frames_from_events, object_key, sample_input
+from pipeline_demo.runner import build_events, object_key, run_stages, sample_input
 from pipeline_demo.store import store_stage_tables
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -195,33 +195,37 @@ def trigger(body: RunRequest) -> dict[str, object]:
         _runs.append(record)
     try:
         record["sample"] = sample_input(spec.pipeline_id, fault.fault_id)
+        frames, stage_error = run_stages(
+            build_events(spec.pipeline_id),
+            fault=fault.fault_id,
+            pipeline_id=spec.pipeline_id,
+        )
+        written: list[str] = []
         if spec.storage == "database":
-            frames = frames_from_events(
-                build_events(spec.pipeline_id),
-                fault=fault.fault_id,
-                pipeline_id=spec.pipeline_id,
-            )
-            written = store_stage_tables(
-                database_url(), spec.pipeline_id, frames, spec.stages, run_id
-            )
+            if frames:
+                # Only persist stages that finished; a later SQL failure leaves prior tables.
+                finished = tuple(stage for stage in spec.stages if stage in frames)
+                written = store_stage_tables(
+                    database_url(), spec.pipeline_id, frames, finished, run_id
+                )
         else:
             ensure_bucket()
-            frames = frames_from_events(
-                build_events(spec.pipeline_id),
-                fault=fault.fault_id,
-                pipeline_id=spec.pipeline_id,
-            )
-            written = []
             for stage in spec.stages:
+                if stage not in frames:
+                    break
                 key = object_key(spec.prefix, stage, run_id, layout=spec.storage)
                 _upload(frames[stage], key)
                 written.append(key)
-        record["status"] = "succeeded"
         record["stages"] = written
+        if stage_error is not None:
+            record["status"] = "failed"
+            record["error"] = f"{type(stage_error).__name__}: {stage_error}"
+        else:
+            record["status"] = "succeeded"
     except Exception as exc:  # noqa: BLE001
         record["status"] = "failed"
         record["error"] = f"{type(exc).__name__}: {exc}"
     record["finished_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    if record["status"] == "failed":
-        raise HTTPException(500, str(record["error"]))
+    # Failed runs still return the record (and any stages written before the crash)
+    # so Driftline can tap ingest while the trigger page shows the job error.
     return record

@@ -116,6 +116,8 @@ export interface OnboardGraphEdge {
   source: string
   target: string
   type: string
+  attrs?: Record<string, unknown>
+  evidence?: { file?: string; line?: number; snippet?: string }
 }
 
 export interface OnboardGraph {
@@ -207,6 +209,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+  updateCodeOnboard: (pipelineId: string, body: CodeOnboardRequest) =>
+    request<CodeOnboardDetail>(`/pipelines/${encodeURIComponent(pipelineId)}/code-onboard`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   setStageDecisions: (pipelineId: string, decisions: Record<string, string>) =>
     request<CodeOnboardDetail>(`/pipelines/${encodeURIComponent(pipelineId)}/stages/decisions`, {
       method: "PUT",
@@ -221,6 +229,17 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       },
+    ),
+  setGuaranteeDecisions: (pipelineId: string, decisions: Record<string, string>) =>
+    request<CodeOnboardDetail>(`/pipelines/${encodeURIComponent(pipelineId)}/guarantees/decisions`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decisions }),
+    }),
+  deleteCodeOnboard: (pipelineId: string) =>
+    request<{ status: string; pipeline_id: string }>(
+      `/pipelines/${encodeURIComponent(pipelineId)}/code-onboard`,
+      { method: "DELETE" },
     ),
   setOutputStore: (pipelineId: string, body: OutputStoreRequest) =>
     request<CodeOnboardDetail>(`/pipelines/${encodeURIComponent(pipelineId)}/output-store`, {

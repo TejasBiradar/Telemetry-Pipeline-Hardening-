@@ -13,6 +13,7 @@ from teleguard.agent.guarantee_checks import checks_from_guarantees
 from teleguard.agent.load_batch import load_batch_file
 from teleguard.agent.minio_client import download_object, list_objects
 from teleguard.agent.results_store import AgentRun, append_run, now_utc
+from teleguard.agent.seed_seen import baseline_stage_outputs
 from teleguard.agent.seen_state import load_seen, mark_seen
 from teleguard.models import BatchContext, Status
 from teleguard.onboard.code import (
@@ -78,6 +79,23 @@ def process_once(
     for cp in checkpoints:
         stage = cp["stage"]
         checkpoint = cp.get("name") or f"after_{stage}"
+        watch = cp.get("object_location") or store.stage_prefix(stage)
+        try:
+            took_baseline = baseline_stage_outputs(
+                pipeline_id,
+                store,
+                stage=stage,
+                location=watch,
+                store_root=store_root,
+                force=False,
+            )
+        except Exception as exc:  # noqa: BLE001 - keep watching other stages
+            log.error("baseline failed for stage %s: %s", stage, exc)
+            took_baseline = False
+        if took_baseline:
+            # First watch for this stage: ignore current files; wait for new ones.
+            seen = load_seen(pipeline_id, store_root=store_root)
+            continue
         if store.kind in {"database", "postgres"}:
             runs.extend(
                 _process_table(
@@ -85,7 +103,7 @@ def process_once(
                     pipeline_id=pipeline_id,
                     stage=stage,
                     checkpoint=checkpoint,
-                    table=cp.get("object_location") or stage,
+                    table=watch,
                     guarantees=guarantees,
                     seen=seen,
                     store_root=store_root,
@@ -93,7 +111,6 @@ def process_once(
                 )
             )
             continue
-        watch = cp.get("object_location") or store.stage_prefix(stage)
         try:
             objects = list_objects(store, watch)
         except Exception as exc:  # noqa: BLE001 - report and continue other stages

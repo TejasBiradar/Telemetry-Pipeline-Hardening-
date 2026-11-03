@@ -208,5 +208,26 @@ def test_code_onboard_analyzes_source_and_registers(client: TestClient) -> None:
     assert g_resp.status_code == 200, g_resp.text
     assert g_resp.json()["guarantee_status"][g_id] == "confirmed"
 
+    onboard = client.get(f"/pipelines/{pid}/code-onboard").json()
+    bulk = {
+        finding["id"]: "confirmed"
+        for finding in onboard["findings"]
+    }
+    bulk_resp = client.put(
+        f"/pipelines/{pid}/guarantees/decisions",
+        json={"decisions": bulk},
+    )
+    assert bulk_resp.status_code == 200, bulk_resp.text
+    assert all(
+        status == "confirmed"
+        for status in bulk_resp.json()["guarantee_status"].values()
+    )
+
+    deleted = client.delete(f"/pipelines/{pid}/code-onboard")
+    assert deleted.status_code == 200, deleted.text
+    assert client.get(f"/pipelines/{pid}/code-onboard").status_code == 404
+    listed = client.get("/pipelines").json()
+    assert pid not in {p["id"] for p in listed["pipelines"]}
+
     # Restore default so later/module-shared assumptions stay on web_analytics.
     assert client.put("/pipelines/web_analytics/select").status_code == 200

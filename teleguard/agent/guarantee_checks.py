@@ -16,6 +16,14 @@ _NULLISH_KINDS = frozenset(
     }
 )
 
+# Findings that imply the field must stay numeric (type-change faults land here).
+_NUMERIC_KINDS = frozenset(
+    {
+        "unit_conversion",
+        "timestamp_unit",
+    }
+)
+
 
 def checks_from_guarantees(
     checkpoint: str,
@@ -25,8 +33,10 @@ def checks_from_guarantees(
 ) -> list[Check]:
     """Build a small check set from confirmed finding JSON objects.
 
-    Always includes a volume floor so empty dumps fail. Per-field: schema (exists)
-    plus null-rate for required/null-related kinds. Drift/unit need baselines — deferred.
+    Always includes a volume floor so empty dumps fail. Per-field: schema (exists,
+    and numeric dtype for unit/timestamp findings) plus null-rate for
+    required/null-related kinds. Drift/unit magnitude checks need baselines —
+    deferred.
 
     When ``columns`` is set (the stage file's actual headers), field checks are only
     built for columns present in that stage. Aggregate stages that drop a field do not
@@ -42,8 +52,9 @@ def checks_from_guarantees(
         if present is not None and field not in present:
             continue
         seen.add(field)
-        checks.append(SchemaCheck(checkpoint, field))
         kind = str(g.get("kind", ""))
+        dtype = "numeric" if kind in _NUMERIC_KINDS else None
+        checks.append(SchemaCheck(checkpoint, field, dtype=dtype))
         if kind in _NULLISH_KINDS:
             checks.append(NullRateCheck(checkpoint, field, max_null_rate=0.0))
     return checks

@@ -8,6 +8,7 @@ import pandas as pd
 
 from teleguard.agent.guarantee_checks import checks_from_guarantees
 from teleguard.agent.results_store import AgentRun, append_run, latest_run, list_runs
+from teleguard.checks.gates import SchemaCheck
 from teleguard.models import BatchContext, Status
 
 
@@ -33,11 +34,34 @@ def test_checks_from_guarantees_schema_and_nulls() -> None:
     assert "null_rate:user_id" in names
     assert "schema:duration_ms" in names
     assert "null_rate:duration_ms" not in names
+    duration_schema = next(c for c in checks if c.name == "schema:duration_ms")
+    assert isinstance(duration_schema, SchemaCheck)
+    assert duration_schema.dtype == "numeric"
 
     df = pd.DataFrame({"user_id": [None] * 40, "duration_ms": list(range(40))})
     ctx = BatchContext(pipeline="p", batch_id="b1")
     results = [r for c in checks for r in c.run(df, ctx)]
     assert any(r.status is Status.FAIL and r.field == "user_id" for r in results)
+
+
+def test_unit_conversion_schema_fails_when_amount_is_text() -> None:
+    """Type-change faults turn amount_cents into text; Driftline must fail schema."""
+    guarantees = [
+        {
+            "id": "unit_conversion:amount_cents:clean.py:14",
+            "kind": "unit_conversion",
+            "field": "amount_cents",
+            "message": "cents to usd",
+        },
+    ]
+    checks = checks_from_guarantees("after_ingest", guarantees)
+    df = pd.DataFrame({"amount_cents": [f"{n}c" for n in range(40)]})
+    ctx = BatchContext(pipeline="payment", batch_id="b1")
+    results = [r for c in checks for r in c.run(df, ctx)]
+    assert any(
+        r.status is Status.FAIL and r.field == "amount_cents" and "expected numeric" in r.message
+        for r in results
+    )
 
 
 def test_checks_skip_fields_absent_from_stage_columns() -> None:

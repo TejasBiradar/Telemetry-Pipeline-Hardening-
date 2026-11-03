@@ -66,6 +66,16 @@ PIPELINES: dict[str, PipelineSpec] = {
         shape="Frozen legacy Python file used by characterisation.",
         storage="subfolder",
     ),
+    "ad_performance": PipelineSpec(
+        pipeline_id="ad_performance",
+        label="Ad Performance",
+        stages=("ingest", "clean", "enrich", "rollup"),
+        prefix="demo/ad_performance/outputs",
+        source_rel="ad_performance",
+        kind="python",
+        shape="Media ETL: filter delivery, compute CPM/CPC/CTR, roll up by campaign and channel.",
+        storage="subfolder",
+    ),
 }
 
 # Repo-relative source folders when not running under Docker.
@@ -74,13 +84,20 @@ _REPO_SOURCE: dict[str, str] = {
     "payment_processing": "pipelines/payment_processing/src",
     "shipment_ledger": "pipelines/shipment_ledger/sql",
     "web_analytics": "pipelines/web_analytics/legacy",
+    "ad_performance": "pipelines/ad_performance/src",
 }
 
 
 def list_pipelines() -> list[PipelineSpec]:
     return [
         PIPELINES[key]
-        for key in ("user_behavior", "payment_processing", "shipment_ledger", "web_analytics")
+        for key in (
+            "user_behavior",
+            "payment_processing",
+            "shipment_ledger",
+            "web_analytics",
+            "ad_performance",
+        )
     ]
 
 

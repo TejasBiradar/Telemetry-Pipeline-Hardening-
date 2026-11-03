@@ -90,6 +90,44 @@ Every agent-generated change is logged here before it merges. The panel asks for
 
 | 43 | 2026-11-02 | — | Connector summary | After Save connector, Source shows a read-only facts block (system, connection, layout) like Registration. No edit after save. Per-stage path rows were dropped; layout is Subfolder per stage or File per stage. | _pending (team)_ | — | The connector stayed as an editable form after save, so saved settings were not visible the same way as registration. Listing every stage path after save was noise. | — |
 
+| 44 | 2026-11-03 | — | Code graph UI | Removed the stage detail panel (Writes/Reads / In memory). Code graph shows only the stage flowchart. | _pending (team)_ | — | The empty Writes/Reads block under a selected stage added noise without useful fields for many pipelines. | — |
+
+| 45 | 2026-11-03 | — | Source fields | Dropped Adapter from registration summary and HTTPS from the MinIO connector form and summary. Secure stays false unless already stored. | _pending (team)_ | — | Those fields were not needed for the demo registration flow. | — |
+
+| 46 | 2026-11-03 | — | Graph + edit | Fixed code-graph stage card sizing/typography so labels stay readable. Restored Edit registration and Edit connector on Source summaries. | _pending (team)_ | — | Stage nodes looked squashed after the detail panel removal. Edit had been removed from the connector summary. | — |
+
+| 47 | 2026-11-04 | — | Delete + confirm-all | `DELETE /pipelines/{id}/code-onboard` removes registration (file or Postgres) and drops the in-memory registry entry; Source shows Delete pipeline with confirm. Guarantees page gets Confirm all via `PUT .../guarantees/decisions`. | _pending (team)_ | — | — | — |
+
+| 48 | 2026-11-04 | — | No historical backfill | First watch per stage baselines current objects, marks them seen, and deletes stored runs for those keys so Results drop history. Confirm/connector save force-refresh the same baseline. Results API filters to confirmed stages. | _pending (team)_ | — | Confirming a late stage used to process every old object; already-stored backfill rows also stayed on Results until purged. | — |
+
+| 49 | 2026-11-04 | — | Stage decision reset | Any stage confirm/reject change deletes Results for unwatched stages and re-baselines remaining confirmed stages so narrowing the watched set does not keep prior runs for the stages still confirmed. | _pending (team)_ | — | Rejecting stages only hid other stages; the one still confirmed kept its older Results rows. | — |
+
+| 50 | 2026-11-04 | — | Graph empty card | Removed the synthetic “No columns found…” field card from Code graph. Stages/guarantees already come from the registration; empty stages show 0 fields with no placeholder node. | _pending (team)_ | — | The placeholder read like hardcoded demo content when ingest had no write/read edges. | — |
+
+| 51 | 2026-11-04 | — | Re-analyze in place | `PUT /pipelines/{id}/code-onboard` re-analyzes the same id and keeps connector + prior stage/guarantee decisions. Edit registration no longer creates a new pipeline or forces connector re-entry. | _pending (team)_ | — | Re-analyze used POST create, which dropped output_store and opened the connector form again. | — |
+
+| 48 | 2026-11-04 | — | Type-change → Driftline | Trigger `run_stages` keeps/publishes completed stages when a later stage crashes (ingest CSV still lands). Agent `unit_conversion` guarantees now require numeric schema so string `amount_cents` fails in Results. | _pending (team)_ | — | Type-change used to abort before any MinIO write, so Driftline never saw the fault; detection belonged on the Results page, not only as a trigger stack trace. | — |
+
+| 49 | 2026-11-04 | — | Code graph both views | Code graph page keeps the stage-order diagram and adds selected-stage reads/writes/outputs plus pipeline derives/produces lineage from the stored graph. | _pending (team)_ | Changed same day. See entry 50. | Detail panel was the old pattern the user had already removed. | — |
+
+| 50 | 2026-11-04 | — | Graph draws fields | Code graph draws stages, field nodes, and output nodes in one diagram with writes/reads/derives/produces edges. No side detail panel. | _pending (team)_ | Changed same day. See entry 51. | All fields shown at once was too busy. | — |
+
+| 51 | 2026-11-04 | — | Collapse stages | Code graph stages start collapsed; click expands that stage’s fields/outputs in the diagram. Detection container rebuilt. | _pending (team)_ | — | — | — |
+
+| 52 | 2026-11-04 | — | Field labels | Expanded field/output nodes show real names (`user_id`, `duration_ms`, …) plus read/write role; larger contrast styling. Detection rebuilt. | _pending (team)_ | — | Nodes showed only a FIELD badge; names were easy to miss. | — |
+
+| 53 | 2026-11-04 | — | Ad Performance ETL | New `ad_performance` demo: ingest→clean→enrich→rollup with CPM/CPC/CTR, filters, campaign×channel agg; wired into pipeline catalog, faults, Dockerfile; pipeline container rebuilt. | _pending (team)_ | — | — | — |
+
+| 54 | 2026-11-04 | — | Graph line cleanup | Code graph draws one stage→field link (no reverse reads / derive fan-out). Added fields show shortened formulas so CPC vs cost_per_conversion differ. Detection rebuilt. | _pending (team)_ | — | Derive edges from enrich+rollup shared field ids stacked many dashed lines. | — |
+
+| 55 | 2026-11-04 | — | Ingest fields + recompute label | Adapter records WRITES from literal record-dict→DataFrame (ingest columns). UI labels later-stage same-name metrics as Recomputed (enrich adds CPC; rollup recomputes after agg). | _pending (team)_ | — | Ingest used dict keys not df[]= so graph showed no fields; enrich+rollup both WRITES cpc/ctr. | — |
+
+| 56 | 2026-11-04 | — | Drop recompute label | Removed hardcoded Recomputed role; enrich/rollup both stay Added by this stage. | _pending (team)_ | — | — | — |
+
+| 57 | 2026-11-04 | — | Delete confirm modal | Replaced browser `window.confirm` on Delete pipeline with an in-app ConfirmDialog (Escape / backdrop cancel, danger confirm). Detection rebuilt. | _pending (team)_ | — | Native system dialog looked out of place on Source. | — |
+
+| 58 | 2026-11-04 | — | Modal full-screen | ConfirmDialog portals to `document.body` so card `backdrop-filter` no longer confines the overlay to the registration card. | _pending (team)_ | — | Grey overlay only covered the top card. | — |
+
 ## Categories to track
 - **Confidently wrong**: the agent stated something about the legacy code that the evidence didn't support
 - **Scope creep**: changed files outside the task (especially `legacy/`)

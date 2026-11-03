@@ -14,15 +14,18 @@ from teleguard.onboard.code import (
     analysis_from_record,
     confirmed_guarantees,
     confirmed_stages,
+    delete_record,
     generate_pipeline_id,
     list_records,
     load_record,
+    merge_reanalyze,
     metadata_to_pipeline,
     onboard_from_source,
     onboard_pipeline,
     register_record,
     save_record,
     set_guarantee_decision,
+    set_guarantee_decisions,
     set_output_store,
     set_stage_decision,
     set_stage_decisions,
@@ -181,6 +184,68 @@ def test_confirm_stages_and_guarantees(tmp_path: Path) -> None:
         set_stage_decision(record, "no_such_stage", "confirmed")
     with pytest.raises(ValueError):
         set_stage_decision(record, "ingest", "maybe")
+
+
+def test_reanalyze_keeps_connector_and_decisions() -> None:
+    previous = onboard_from_source(USER_BEHAVIOR_SRC, name="Client UB")
+    previous = set_stage_decisions(
+        previous,
+        {"ingest": "confirmed", "aggregate": "confirmed"},
+    )
+    fid = str(previous.findings[0]["id"])
+    previous = set_guarantee_decision(previous, fid, "confirmed")
+    previous = set_output_store(
+        previous,
+        MinioOutputStore(
+            endpoint="http://minio:9000",
+            bucket="demo",
+            prefix="demo/user_behavior/outputs",
+            secure=False,
+            access_key="minioadmin",
+            secret_key="minioadmin",
+        ),
+    )
+    fresh = onboard_pipeline(
+        name="Client UB renamed",
+        entry="run.run",
+        pipeline_id=previous.pipeline_id,
+        source_path=USER_BEHAVIOR_SRC,
+    )
+    merged = merge_reanalyze(previous, fresh)
+    assert merged.pipeline_id == previous.pipeline_id
+    assert merged.name == "Client UB renamed"
+    assert merged.output_store == previous.output_store
+    assert merged.stage_status["ingest"] == "confirmed"
+    assert merged.stage_status["aggregate"] == "confirmed"
+    assert merged.guarantee_status[fid] == "confirmed"
+
+
+def test_confirm_all_guarantees(tmp_path: Path) -> None:
+    record = onboard_from_source(USER_BEHAVIOR_SRC, name="Client UB")
+    decisions = {
+        str(f["id"]): "confirmed" for f in record.findings if isinstance(f, dict)
+    }
+    record = set_guarantee_decisions(record, decisions)
+    assert len(confirmed_guarantees(record)) == len(record.findings)
+    assert all(status == "confirmed" for status in record.guarantee_status.values())
+    save_record(record, store_root=tmp_path)
+    loaded = load_record(record.pipeline_id, store_root=tmp_path)
+    assert loaded is not None
+    assert all(status == "confirmed" for status in loaded.guarantee_status.values())
+
+
+def test_delete_record_removes_store_and_registry(tmp_path: Path) -> None:
+    record = onboard_from_source(USER_BEHAVIOR_SRC, name="Client UB")
+    save_record(record, store_root=tmp_path)
+    registry = PipelineRegistry()
+    register_record(registry, record)
+    assert registry.select(record.pipeline_id)
+    assert delete_record(record.pipeline_id, store_root=tmp_path) is True
+    assert load_record(record.pipeline_id, store_root=tmp_path) is None
+    assert not (tmp_path / record.pipeline_id).exists()
+    assert registry.remove(record.pipeline_id) is True
+    assert registry.get(record.pipeline_id) is None
+    assert delete_record(record.pipeline_id, store_root=tmp_path) is False
 
 
 def test_minio_output_store_fixed_stage_layout(tmp_path: Path) -> None:

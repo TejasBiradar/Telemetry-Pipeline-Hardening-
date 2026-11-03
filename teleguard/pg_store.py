@@ -76,6 +76,31 @@ def list_registrations() -> list[dict[str, Any]]:
     return documents
 
 
+def delete_registration(pipeline_id: str) -> bool:
+    """Remove one registration and its agent/review rows. Returns False if missing."""
+    with connect() as conn:
+        deleted = conn.execute(
+            "DELETE FROM registered_pipelines WHERE pipeline_id = %s RETURNING pipeline_id",
+            (pipeline_id,),
+        ).fetchone()
+        if deleted is None:
+            conn.rollback()
+            return False
+        # No FK from agent_* / review_decisions onto registered_pipelines.
+        conn.execute("DELETE FROM check_alerts WHERE pipeline_id = %s", (pipeline_id,))
+        conn.execute("DELETE FROM agent_runs WHERE pipeline_id = %s", (pipeline_id,))
+        conn.execute(
+            "DELETE FROM agent_seen_objects WHERE pipeline_id = %s",
+            (pipeline_id,),
+        )
+        conn.execute(
+            "DELETE FROM review_decisions WHERE pipeline_id = %s",
+            (pipeline_id,),
+        )
+        conn.commit()
+    return True
+
+
 def append_agent_run(document: dict[str, Any]) -> None:
     """Append one agent run and one check_alerts row per result."""
     results = document.get("results", [])
@@ -144,6 +169,56 @@ def list_agent_runs(pipeline_id: str, *, limit: int) -> list[dict[str, Any]]:
         if isinstance(document, dict):
             documents.append(document)
     return documents
+
+
+def delete_agent_runs_for_keys(pipeline_id: str, object_keys: list[str]) -> int:
+    """Remove stored check runs for the given object keys (historical baseline)."""
+    if not object_keys:
+        return 0
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT id FROM agent_runs WHERE pipeline_id = %s AND object_key = ANY(%s)",
+            (pipeline_id, list(object_keys)),
+        ).fetchall()
+        run_ids = [int(row[0]) for row in rows]
+        if not run_ids:
+            conn.commit()
+            return 0
+        conn.execute(
+            "DELETE FROM check_alerts WHERE pipeline_id = %s AND run_id = ANY(%s)",
+            (pipeline_id, run_ids),
+        )
+        conn.execute(
+            "DELETE FROM agent_runs WHERE pipeline_id = %s AND id = ANY(%s)",
+            (pipeline_id, run_ids),
+        )
+        conn.commit()
+    return len(run_ids)
+
+
+def delete_agent_runs_for_stages(pipeline_id: str, stages: list[str]) -> int:
+    """Remove stored check runs for the given stage names."""
+    if not stages:
+        return 0
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT id FROM agent_runs WHERE pipeline_id = %s AND stage = ANY(%s)",
+            (pipeline_id, list(stages)),
+        ).fetchall()
+        run_ids = [int(row[0]) for row in rows]
+        if not run_ids:
+            conn.commit()
+            return 0
+        conn.execute(
+            "DELETE FROM check_alerts WHERE pipeline_id = %s AND run_id = ANY(%s)",
+            (pipeline_id, run_ids),
+        )
+        conn.execute(
+            "DELETE FROM agent_runs WHERE pipeline_id = %s AND id = ANY(%s)",
+            (pipeline_id, run_ids),
+        )
+        conn.commit()
+    return len(run_ids)
 
 
 def load_seen(pipeline_id: str) -> set[str]:

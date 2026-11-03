@@ -14,7 +14,13 @@ sys.path.insert(0, str(ROOT))
 
 from pipeline_demo.catalog import list_pipelines, pipeline_by_id, source_dir
 from pipeline_demo.faults import apply_fault, fault_by_id, list_faults
-from pipeline_demo.runner import build_events, frames_from_events, object_key, sample_input
+from pipeline_demo.runner import (
+    build_events,
+    frames_from_events,
+    object_key,
+    run_stages,
+    sample_input,
+)
 from pipeline_demo.store import store_stage_tables
 
 
@@ -51,15 +57,19 @@ def test_catalog_lists_the_pipeline_shapes() -> None:
         "payment_processing",
         "shipment_ledger",
         "web_analytics",
+        "ad_performance",
     ]
     assert pipeline_by_id("user_behavior").kind == "python"
     assert pipeline_by_id("user_behavior").storage == "single"
     assert pipeline_by_id("payment_processing").storage == "subfolder"
     assert pipeline_by_id("shipment_ledger").storage == "database"
     assert pipeline_by_id("web_analytics").storage == "subfolder"
+    assert pipeline_by_id("ad_performance").storage == "subfolder"
     assert pipeline_by_id("payment_processing").kind == "python"
     assert pipeline_by_id("shipment_ledger").kind == "sql"
+    assert pipeline_by_id("ad_performance").kind == "python"
     assert source_dir("payment_processing").name in {"src", "payment_processing"}
+    assert source_dir("ad_performance").name in {"src", "ad_performance"}
     assert any(source_dir("shipment_ledger").glob("*.sql"))
 
 
@@ -83,6 +93,23 @@ def test_payment_clean_run_has_reconcile_stage() -> None:
     assert list(frames) == list(pipeline_by_id("payment_processing").stages)
     assert frames["ingest"]["user_id"].notna().all()
     assert len(frames["reconcile"]) > 0
+
+
+def test_ad_performance_computes_cpm_and_rolls_up() -> None:
+    frames = frames_from_events(
+        build_events("ad_performance", 40),
+        fault="clean",
+        pipeline_id="ad_performance",
+    )
+    assert list(frames) == ["ingest", "clean", "enrich", "rollup"]
+    enrich = frames["enrich"]
+    assert {"cpm", "cpc", "ctr", "cost_per_conversion"} <= set(enrich.columns)
+    expected_cpm = enrich["spend_usd"] / enrich["impressions"] * 1000.0
+    assert enrich["cpm"].tolist() == pytest.approx(expected_cpm.tolist())
+    rollup = frames["rollup"]
+    assert {"campaign_id", "channel", "impressions", "cpm"} <= set(rollup.columns)
+    assert len(rollup) > 0
+    assert len(rollup) <= len(enrich)
 
 
 def test_web_analytics_clean_run() -> None:
@@ -158,6 +185,19 @@ def test_payment_type_change_fails() -> None:
             fault="type_change_amount",
             pipeline_id="payment_processing",
         )
+
+
+def test_payment_type_change_still_yields_ingest_for_detection() -> None:
+    """Trigger publishes ingest so Driftline can catch the type change beside the job."""
+    frames, error = run_stages(
+        build_events("payment_processing", 40),
+        fault="type_change_amount",
+        pipeline_id="payment_processing",
+    )
+    assert isinstance(error, TypeError)
+    assert list(frames) == ["ingest"]
+    assert frames["ingest"]["amount_cents"].dtype == object
+    assert str(frames["ingest"]["amount_cents"].iloc[0]).endswith("c")
 
 
 def test_shipment_clean_run_drops_nothing_required() -> None:

@@ -195,6 +195,7 @@ class _FunctionVisitor(ast.NodeVisitor):
                  by_name: dict[str, _Module]) -> None:
         self.graph = graph
         self.mod = mod
+        self.func = func
         self.by_name = by_name
         self.fn_id = function_id(mod.name, func.name)
         self.findings: list[Finding] = []
@@ -469,7 +470,68 @@ class _FunctionVisitor(ast.NodeVisitor):
                    "with a runtime run", node)
 
     def _call_DataFrame(self, node: ast.Call, func: ast.Attribute) -> None:
+        # Literal column schemas: pd.DataFrame({"a": ...}) or rows built with
+        # {"col": ...} dicts earlier in the same function (common ingest pattern).
+        cols = self._literal_frame_columns(node)
+        if cols:
+            for col in cols:
+                self._edge(self.fn_id, self._field(col), EdgeType.WRITES, node)
+            return
         if node.args and not isinstance(node.args[0], (ast.Dict, ast.Constant)):
             self._find(FindingKind.RUNTIME_COLUMNS, None,
                        "a DataFrame is built from records: its column names come from the "
                        "data, not the code; confirm them with a runtime run", node)
+
+    def _literal_frame_columns(self, node: ast.Call) -> list[str]:
+        """Column names recoverable as string literals from a DataFrame constructor."""
+        if node.args:
+            first = node.args[0]
+            if isinstance(first, ast.Dict):
+                keys = self._string_keys(first)
+                if keys:
+                    return keys
+            if isinstance(first, (ast.List, ast.Tuple)):
+                keys = self._union_dict_keys(first.elts)
+                if keys:
+                    return keys
+        for kw in node.keywords:
+            if kw.arg == "data" and isinstance(kw.value, ast.Dict):
+                keys = self._string_keys(kw.value)
+                if keys:
+                    return keys
+        return self._record_dict_columns_in_function()
+
+    def _record_dict_columns_in_function(self) -> list[str]:
+        """Union of string keys from dict literals in this function (ingest→append pattern)."""
+        found: list[str] = []
+        seen: set[str] = set()
+        for sub in ast.walk(self.func):
+            if not isinstance(sub, ast.Dict):
+                continue
+            for key in self._string_keys(sub):
+                if key not in seen:
+                    seen.add(key)
+                    found.append(key)
+        return found
+
+    @staticmethod
+    def _string_keys(node: ast.Dict) -> list[str]:
+        keys: list[str] = []
+        for key in node.keys:
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                keys.append(key.value)
+            else:
+                return []
+        return keys
+
+    def _union_dict_keys(self, elts: list[ast.expr]) -> list[str]:
+        found: list[str] = []
+        seen: set[str] = set()
+        for elt in elts:
+            if not isinstance(elt, ast.Dict):
+                continue
+            for key in self._string_keys(elt):
+                if key not in seen:
+                    seen.add(key)
+                    found.append(key)
+        return found

@@ -27,6 +27,8 @@ _STATUSES: tuple[str, ...] = ("settled", "declined", "pending", "refunded")
 _MERCHANTS: tuple[str, ...] = ("MER_US_1", "MER_EU_2", "MER_APAC_3", "MER_US_4")
 _CARRIERS: tuple[str, ...] = ("air", "road", "sea")
 _WAREHOUSES: tuple[str, ...] = ("WH_EAST", "WH_WEST", "WH_CENTRAL")
+_CHANNELS: tuple[str, ...] = ("search", "social", "display", "video")
+_CAMPAIGNS: tuple[str, ...] = ("cmp_brand", "cmp_prospect", "cmp_retarget", "cmp_launch")
 
 
 def build_events(pipeline_id: str = "user_behavior", n: int = 40) -> list[dict[str, object]]:
@@ -35,6 +37,8 @@ def build_events(pipeline_id: str = "user_behavior", n: int = 40) -> list[dict[s
         return _build_payment_events(n)
     if pipeline_id == "shipment_ledger":
         return _build_shipment_events(n)
+    if pipeline_id == "ad_performance":
+        return _build_ad_performance_events(n)
     if pipeline_id in {"user_behavior", "web_analytics"}:
         return _build_telemetry_events(n, for_web=pipeline_id == "web_analytics")
     raise ValueError(f"no event builder for pipeline {pipeline_id!r}")
@@ -46,22 +50,51 @@ def frames_from_events(
     fault: str = "clean",
     pipeline_id: str = "user_behavior",
 ) -> dict[str, pd.DataFrame]:
-    """Apply one fault, run the pipeline stages, return one frame per stage."""
+    """Apply one fault, run the pipeline stages, return one frame per stage.
+
+    Raises if a stage fails (same as a loud client crash). Prefer
+    ``run_stages`` when the trigger must still publish completed stages.
+    """
+    frames, error = run_stages(events, fault=fault, pipeline_id=pipeline_id)
+    if error is not None:
+        raise error
+    return frames
+
+
+def run_stages(
+    events: list[dict[str, object]],
+    *,
+    fault: str = "clean",
+    pipeline_id: str = "user_behavior",
+) -> tuple[dict[str, pd.DataFrame], BaseException | None]:
+    """Run stages in order; keep frames completed before a crash.
+
+    Detection taps stage outputs. A real job that writes after each stage still
+    leaves earlier dumps even when a later stage dies — so Driftline can see
+    the bad ingest rows for a type-change fault.
+    """
     spec = pipeline_by_id(pipeline_id)
     faulty = apply_fault(events, fault, pipeline_id=pipeline_id)
     if spec.kind == "sql":
-        return _frames_from_sql(faulty, pipeline_id)
+        try:
+            return _frames_from_sql(faulty, pipeline_id), None
+        except Exception as exc:  # noqa: BLE001 - surface SQL stage failures
+            return {}, exc
     module = _load_run_module(pipeline_id)
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / "batch_001.jsonl"
-        path.write_text("".join(json.dumps(event) + "\n" for event in faulty))
-        current = module.ingest(Path(tmp))
-    frames: dict[str, pd.DataFrame] = {spec.stages[0]: current}
-    for stage in spec.stages[1:]:
-        fn = getattr(module, stage)
-        current = fn(current) if not current.empty else pd.DataFrame()
-        frames[stage] = current
-    return frames
+    frames: dict[str, pd.DataFrame] = {}
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "batch_001.jsonl"
+            path.write_text("".join(json.dumps(event) + "\n" for event in faulty))
+            current = module.ingest(Path(tmp))
+        frames[spec.stages[0]] = current
+        for stage in spec.stages[1:]:
+            fn = getattr(module, stage)
+            current = fn(current) if not current.empty else pd.DataFrame()
+            frames[stage] = current
+        return frames, None
+    except Exception as exc:  # noqa: BLE001 - return partial frames to the trigger
+        return frames, exc
 
 
 def object_key(prefix: str, stage: str, run_id: str, *, layout: str = "subfolder") -> str:
@@ -191,6 +224,28 @@ def _build_payment_events(n: int) -> list[dict[str, object]]:
                 "payment_method": _METHODS[i % len(_METHODS)],
                 "status": _STATUSES[i % len(_STATUSES)],
                 "error_message": None if i % 7 else "timeout error",
+            }
+        )
+    return events
+
+
+def _build_ad_performance_events(n: int) -> list[dict[str, object]]:
+    """Daily campaign delivery rows with spend, impressions, and clicks."""
+    events: list[dict[str, object]] = []
+    for i in range(n):
+        impressions = 1_000 + (i * 173) % 90_000
+        clicks = 10 + (i * 7) % max(impressions // 20, 1)
+        spend = round(5.0 + (i * 1.37) % 400.0, 2)
+        events.append(
+            {
+                "row_id": f"ad{i}",
+                "event_date": f"2024-06-{(i % 28) + 1:02d}",
+                "campaign_id": _CAMPAIGNS[i % len(_CAMPAIGNS)],
+                "channel": _CHANNELS[i % len(_CHANNELS)],
+                "impressions": impressions,
+                "clicks": clicks,
+                "spend_usd": spend,
+                "conversions": (i * 3) % 12,
             }
         )
     return events

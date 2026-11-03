@@ -143,11 +143,41 @@ _WEB_FAULT_ALIASES: dict[str, str] = {
     "ios_channel_offline": "feed_stops_ios",
 }
 
+AD_PERFORMANCE_FAULTS: tuple[DemoFault, ...] = (
+    DemoFault("clean", "Clean media batch", "No fault. Negative control for campaign delivery."),
+    DemoFault(
+        "spend_in_cents",
+        "Unit change (spend already scaled)",
+        "spend_usd arrives already divided by 100, so CPM/CPC collapse.",
+    ),
+    DemoFault(
+        "impressions_as_text",
+        "Type change (impressions)",
+        "impressions arrive as text. clean fails on numeric compare.",
+    ),
+    DemoFault(
+        "null_campaign",
+        "Null campaign_id",
+        "Some rows omit campaign_id. Job finishes; clean drops them.",
+    ),
+    DemoFault(
+        "unknown_channel",
+        "Unknown channel values",
+        "Some rows use channels outside the allow-list; clean drops them.",
+    ),
+    DemoFault(
+        "thin_social",
+        "Volume drop (social)",
+        "Most social-channel rows are missing. Rollup still finishes thinner.",
+    ),
+)
+
 _FAULTS_BY_PIPELINE: dict[str, tuple[DemoFault, ...]] = {
     "user_behavior": USER_BEHAVIOR_FAULTS,
     "payment_processing": PAYMENT_FAULTS,
     "shipment_ledger": SHIPMENT_FAULTS,
     "web_analytics": WEB_ANALYTICS_FAULTS,
+    "ad_performance": AD_PERFORMANCE_FAULTS,
 }
 
 VERSIONS: tuple[str, ...] = ("1.2.0", "5.2.0", "1.5.2", "5.1.3", "6.1.0", "6.0.1")
@@ -186,6 +216,8 @@ def apply_fault(
         return _apply_payment(events, fault_id, seed=seed)
     if pipeline_id == "shipment_ledger":
         return _apply_shipment(events, fault_id, seed=seed)
+    if pipeline_id == "ad_performance":
+        return _apply_ad_performance(events, fault_id, seed=seed)
     resolved = _WEB_FAULT_ALIASES.get(fault_id, fault_id) if pipeline_id == "web_analytics" else fault_id
     return _apply_telemetry(events, resolved, seed=seed)
 
@@ -348,3 +380,45 @@ def _drop_version(
             continue
         kept.append(event)
     return kept
+
+
+def _apply_ad_performance(
+    events: list[dict[str, object]],
+    fault_id: str,
+    *,
+    seed: int,
+) -> list[dict[str, object]]:
+    out = copy.deepcopy(events)
+    if fault_id == "clean":
+        return out
+    if fault_id == "spend_in_cents":
+        for event in out:
+            value = event.get("spend_usd")
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError("spend_usd must be numeric before a unit change")
+            event["spend_usd"] = float(value) / 100.0
+        return out
+    if fault_id == "impressions_as_text":
+        for event in out:
+            event["impressions"] = f"{event.get('impressions')}imp"
+        return out
+    if fault_id == "null_campaign":
+        rng = random.Random(seed)
+        for event in out:
+            if rng.random() < 0.3:
+                event["campaign_id"] = None
+        return out
+    if fault_id == "unknown_channel":
+        for i, event in enumerate(out):
+            if i % 5 == 0:
+                event["channel"] = "affiliate"
+        return out
+    if fault_id == "thin_social":
+        rng = random.Random(seed)
+        kept: list[dict[str, object]] = []
+        for event in out:
+            if event.get("channel") == "social" and rng.random() < 0.7:
+                continue
+            kept.append(event)
+        return kept
+    raise ValueError(f"unhandled ad_performance fault {fault_id!r}")
